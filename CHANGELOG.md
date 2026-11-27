@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Automatic OCR now searches large image regions on pages with sparse native text and retains the native text.
+
 - Added compact Markdown citations that share document identifiers while preserving element locations.
 
 - Explain why text retrieval is empty on image-only pages and point readers to the page renderer.

@@ -26,6 +26,7 @@ export const DEDUP_SIMILARITY_MAX_ASPECT_DELTA = Number(process.env.PDF_DEDUP_SI
 export const DEDUP_SIMILARITY_MAX_AREA_RATIO = Number(process.env.PDF_DEDUP_SIMILARITY_MAX_AREA_RATIO ?? 0.08);
 export const OCR_MAX_NATIVE_WORDS = 24;
 export const OCR_MIN_IMAGE_COVERAGE = 0.08;
+export const AUTO_OCR_MAX_REGIONS_PER_PAGE = 2;
 export const OCR_MIN_WORDS = 6;
 export const OCR_MIN_CHARS = 25;
 export const OCR_MIN_ALNUM_RATIO = 0.30;

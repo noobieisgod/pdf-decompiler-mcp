@@ -4,6 +4,27 @@ import test from 'node:test';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 
+test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const root = path.resolve('test/fixtures/generated');
+    const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], extractionTimeoutMs: 50_000 })).init();
+    t.after(() => manager.close());
+    for (const file of ['image-ocr.pdf', 'multiple-image-ocr.pdf', 'mixed-text-raster.pdf']) {
+        const opened = await manager.open({ source: path.join(root, file), ocrPolicy: 'auto' });
+        const result = await manager.getPages({ ...opened, pages: [1], mode: 'text' });
+        const ocrBlocks = result.elements.filter(element => element.type === 'block' && element.textSource === 'ocr');
+        assert.ok(result.elements.some(element => element.type === 'block' && element.textSource === 'native'), file);
+        if (file === 'mixed-text-raster.pdf') {
+            assert.equal(ocrBlocks.length, 0);
+        } else {
+            assert.match(ocrBlocks.map(block => block.text).join(' '), /OCR SUCCESS TEXT/i, file);
+            assert.ok(ocrBlocks.every(block => block.ocrSource?.figureId && block.citation.bbox), file);
+            const search = await manager.search({ ...opened, query: 'DETERMINISTIC EVIDENCE' });
+            assert.ok(search.results.some(hit => hit.citation.elementId === ocrBlocks[0].id), file);
+        }
+        await manager.closeDocument(opened);
+    }
+});
+
 test('required OCR policy is exercised when Tesseract integration is enabled', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');
     const config = loadConfig({ cacheMode: 'none', allowRoots: [root], ocrPolicy: 'required', extractionTimeoutMs: 50_000 });

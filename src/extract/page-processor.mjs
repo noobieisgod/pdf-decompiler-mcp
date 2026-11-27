@@ -1,4 +1,4 @@
-import { ROUTE_TEXT_DENSITY, HF_MAX_WORDS } from '../config/constants.mjs';
+import { AUTO_OCR_MAX_REGIONS_PER_PAGE, OCR_MAX_NATIVE_WORDS, OCR_MIN_IMAGE_COVERAGE, ROUTE_TEXT_DENSITY, HF_MAX_WORDS } from '../config/constants.mjs';
 import { hfSignature } from './headers-footers.mjs';
 import { classifyRenderFailure, cropPlacementFromCanvas, encodePageImage, isKnownRenderEnvironmentError, renderPageImages, renderPageCanvas, scaleCanvas, getImagePlacements } from './images.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
@@ -264,11 +264,17 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         extractionMethod: img.extractionMethod ?? 'failed',
                     });
             }
-            if (ocrPolicy === 'required' && allowOcr && detectTesseract()) {
+            const requiredOcr = ocrPolicy === 'required';
+            const autoOcr = ocrPolicy === 'auto' && pageProfile.wordCount <= OCR_MAX_NATIVE_WORDS;
+            const ocrCandidates = allowOcr && (requiredOcr || autoOcr)
+                ? [...rawImages.entries()].filter(([, image]) => image.bbox && image.regionKind !== 'decorative'
+                    && (requiredOcr || image.area >= OCR_MIN_IMAGE_COVERAGE * viewport.width * viewport.height))
+                : [];
+            if (ocrCandidates.length && detectTesseract()) {
                 const nativeBlocks = [...rawTextBlocks];
-                for (let rawImageIndex = 0; rawImageIndex < rawImages.length; rawImageIndex += 1) {
-                    const image = rawImages[rawImageIndex];
-                    if (image.regionKind === 'decorative' || !image.bbox) continue;
+                const selected = requiredOcr ? ocrCandidates
+                    : ocrCandidates.sort(([, a], [, b]) => b.area - a.area).slice(0, AUTO_OCR_MAX_REGIONS_PER_PAGE);
+                for (const [rawImageIndex, image] of selected) {
                     ocrAttempted = true;
                     ocrRegions.attempted += 1;
                     let ocrBytes = image.data ? Buffer.from(image.data, 'base64') : null;
