@@ -16,7 +16,7 @@ PDF Decompiler MCP 3.0.0 is a native ESM, local stdio server. It uses the offici
 
 ## Canonical format 4
 
-Canonical format version 4 and extraction revision 4 invalidate earlier canonical cache records. They retain the format 3 geometry and semantic records while adding consistent OCR region status, word-confidence gating, corrected OCR provenance, section-bounded column order, and corrected textual and spread-table extraction. Earlier records are re-extracted because rejected OCR, table boundaries, and reading order cannot be reconstructed safely.
+Canonical format version 4 retains the format 3 geometry and semantic records while adding consistent OCR region status, word-confidence gating, corrected OCR provenance, section-bounded column order, and corrected textual and spread-table extraction. Extraction revision 5 corrects cached diagnostics for image-only pages and disabled OCR. Earlier records are re-extracted so retrieval uses the current extraction and diagnostics.
 
 Bounding boxes use PDF points after CropBox and page rotation, with a top-left origin, x increasing right, and y increasing down. Values are rounded to three decimals. A block box is the union of valid span boxes. Coordinates within 0.5 points of a page edge may be clamped; larger invalid boxes become null with `invalid_geometry`.
 

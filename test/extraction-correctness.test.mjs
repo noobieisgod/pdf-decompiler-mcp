@@ -20,6 +20,22 @@ async function modelFor(manager, name) {
     return { opened, state, model: state.model };
 }
 
+test('text retrieval distinguishes an OCR-disabled scan from a blank page', async t => {
+    const manager = await managerFor(t);
+    const scan = await modelFor(manager, 'scan-readable.pdf');
+    const scanned = await manager.getPages({ ...scan.opened, pages: [1], mode: 'text', outputFormat: 'markdown' });
+    assert.equal(scanned.markdown, '');
+    assert.deepEqual(scanned.warnings, [{
+        code: 'page_warning',
+        message: 'No native text was extracted from this image-only page. OCR is disabled by policy. Use pdf_render_page to inspect the page visually.',
+        page: 1,
+    }]);
+    const blank = await modelFor(manager, 'blank.pdf');
+    const empty = await manager.getPages({ ...blank.opened, pages: [1], mode: 'text', outputFormat: 'markdown' });
+    assert.equal(empty.markdown, '');
+    assert.deepEqual(empty.warnings, [{ code: 'page_warning', message: 'Blank page', page: 1 }]);
+});
+
 function assertValidBbox(bbox, page) {
     assert.ok(bbox);
     assert.ok(bbox.width > 0 && bbox.height > 0);

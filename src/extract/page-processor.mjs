@@ -64,7 +64,9 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
             extractionMode = 'visual_fallback';
             routingMode = 'page_visual_fallback';
             contentClass = 'scan_like';
-            ocrReason = 'OCR skipped because extraction had already exhausted its available work budget';
+            ocrReason = ocrPolicy === 'off'
+                ? 'OCR is disabled by policy'
+                : 'OCR skipped because extraction had already exhausted its available work budget';
         } else if (!detectTesseract()) {
             extractionMode = 'visual_fallback';
             routingMode = 'page_visual_fallback';
@@ -116,7 +118,9 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     if (extractionMode === 'visual_fallback') {
         fallbackReason = ocrReason ?? 'Low-text page routed to whole-page visual fallback';
         if (!allowVisualFallback) {
-            fallbackReason = `${fallbackReason}; eager visual fallback is disabled`;
+            const noRasterText = pageProfile.visualType === 'raster' && !rawItems.some(item => item.str.trim());
+            const visualNotice = noRasterText ? 'No native text was extracted from this image-only page. ' : '';
+            fallbackReason = `${visualNotice}${fallbackReason}. Use pdf_render_page to inspect the page visually.`;
             pageText = '(Visual content available through pdf_render_page)';
         } else {
             try {

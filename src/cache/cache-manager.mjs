@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fingerprint, randomKey, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
+import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../model/canonical.mjs';
 
 const DAY = 86_400_000;
 const execFileAsync = promisify(execFile);
@@ -248,7 +249,7 @@ export class CacheManager {
             return null;
         }
         const model = JSON.parse(canonicalBytes.toString('utf8'));
-        if (model.canonicalFormatVersion !== 4 || model.extractionRevision !== 4) return null;
+        if (model.canonicalFormatVersion !== CANONICAL_FORMAT_VERSION || model.extractionRevision !== EXTRACTION_REVISION) return null;
         for (const asset of model.assets) {
             if (!asset.filename) {
                 asset.data = null;

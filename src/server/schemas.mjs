@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../model/canonical.mjs';
 
 export const DocumentIdSchema = z.string().regex(/^doc_[a-f0-9]{64}$/);
 export const ExtractionFingerprintSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -305,7 +306,7 @@ const OpenDataSchema = z.object({
     cacheHit: z.boolean(), cache: CacheStatusSchema,
 });
 const DocumentInfoDataSchema = z.object({
-    schemaVersion: z.literal('3.0.0'), canonicalFormatVersion: z.literal(4), extractionRevision: z.literal(4),
+    schemaVersion: z.literal('3.0.0'), canonicalFormatVersion: z.literal(CANONICAL_FORMAT_VERSION), extractionRevision: z.literal(EXTRACTION_REVISION),
     documentId: DocumentIdSchema, pdfSha256: z.string().regex(/^[a-f0-9]{64}$/), extractionFingerprint: ExtractionFingerprintSchema,
     dependencyFingerprint: z.string().regex(/^[a-f0-9]{64}$/), metadata: MetadataSchema, outline: z.array(OutlineItemSchema),
     totalPages: z.number().int().positive(), processedPages: z.number().int().nonnegative(), partial: PartialSchema.nullable(),

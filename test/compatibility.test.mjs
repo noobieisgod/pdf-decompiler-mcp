@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer } from '../src/server/create-server.mjs';
+import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../src/model/canonical.mjs';
 
 test('automated SDK client compatibility covers discovery, schemas, structured output, errors, and shutdown', async () => {
     const doc = `doc_${'d'.repeat(64)}`;
     const generation = 'e'.repeat(64);
     const manager = new Proxy({}, { get: () => async args => ({
-        schemaVersion: '3.0.0', canonicalFormatVersion: 4, extractionRevision: 4,
+        schemaVersion: '3.0.0', canonicalFormatVersion: CANONICAL_FORMAT_VERSION, extractionRevision: EXTRACTION_REVISION,
         documentId: args.documentId || doc, extractionFingerprint: args.extractionFingerprint || generation,
         pdfSha256: 'f'.repeat(64), dependencyFingerprint: '1'.repeat(64), metadata: {}, outline: [], totalPages: 1,
         processedPages: 1, partial: null, pages: [], warnings: [], createdAt: '2026-08-01T00:00:00.000Z',

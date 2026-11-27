@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Explain why text retrieval is empty on image-only pages and point readers to the page renderer.
+
 - Added a `doctor` command and server-level text-first workflow instructions.
 - Added two licensed real-world evaluation PDFs plus an external, checksum-recorded TSMC annual-report sample.
 - Separated blocking Windows CI from visible best-effort macOS, Linux, and Linux OCR status.

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer } from '../src/server/create-server.mjs';
+import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../src/model/canonical.mjs';
 
 test('official SDK v2 negotiates the immutable resource and structured-content surface', async t => {
     const doc = `doc_${'a'.repeat(64)}`;
@@ -9,7 +10,7 @@ test('official SDK v2 negotiates the immutable resource and structured-content s
     const manager = new Proxy({}, { get: (_target, property) => property === 'readResource'
         ? async () => ({ mimeType: 'text/plain', text: 'resource' })
         : async args => ({
-            schemaVersion: '3.0.0', canonicalFormatVersion: 4, extractionRevision: 4,
+            schemaVersion: '3.0.0', canonicalFormatVersion: CANONICAL_FORMAT_VERSION, extractionRevision: EXTRACTION_REVISION,
             documentId: args.documentId || doc, extractionFingerprint: args.extractionFingerprint || generation,
             pdfSha256: 'f'.repeat(64), dependencyFingerprint: '1'.repeat(64), metadata: {}, outline: [], totalPages: 1,
             processedPages: 1, partial: null, pages: [], warnings: [], createdAt: '2026-08-01T00:00:00.000Z',
