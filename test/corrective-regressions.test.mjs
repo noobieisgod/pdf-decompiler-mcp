@@ -108,6 +108,11 @@ test('open completion, cursor-only pages, and exact wire budgets follow the publ
 
     const columns = await client.callTool({ name: 'pdf_open', arguments: { source: path.join(fixtureRoot, 'multi-column.pdf') } });
     const columnRef = { documentId: columns.structuredContent.documentId, extractionFingerprint: columns.structuredContent.extractionFingerprint };
+    const phrase = await client.callTool({ name: 'pdf_search', arguments: { ...columnRef, query: 'Right column eight', strategy: 'phrase' } });
+    assert.equal(phrase.structuredContent.data.results.length, 1);
+    assert.equal(phrase.structuredContent.citations[0].pageId, 'page:1');
+    const absentPhrase = await client.callTool({ name: 'pdf_search', arguments: { ...columnRef, query: 'eight right column', strategy: 'phrase' } });
+    assert.deepEqual(absentPhrase.structuredContent.data.results, []);
     const markdown = { ...columnRef, pages: [1], mode: 'text', outputFormat: 'markdown' };
     const full = await client.callTool({ name: 'pdf_get_pages', arguments: markdown });
     const compact = await client.callTool({ name: 'pdf_get_pages', arguments: { ...markdown, citationDetail: 'compact' } });

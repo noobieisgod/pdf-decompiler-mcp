@@ -372,7 +372,7 @@ export class DocumentManager {
     async search(args) {
         return this.withOperation(args.documentId, args.extractionFingerprint, async state => {
         const strategy = args.strategy || 'full_text';
-        const options = { pages: args.pages, elementTypes: args.elementTypes };
+        const options = { pages: args.pages, elementTypes: args.elementTypes, phrase: strategy === 'phrase' };
         const warnings = [];
         const bm25Results = searchBm25(state.bm25, args.query, options);
         let results = bm25Results;

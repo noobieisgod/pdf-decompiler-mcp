@@ -105,7 +105,7 @@ The server uses stdio. Protocol messages are written to stdout and diagnostics a
 |---|---|
 | `pdf_open` | Validate, decompose, index, resume, or load an exact PDF generation. |
 | `pdf_document_info` | Report metadata, decomposition, diagnostics, cache state, leases, and resource lifetime. |
-| `pdf_search` | Search with deterministic BM25, optional semantic retrieval, or reciprocal-rank fusion. |
+| `pdf_search` | Search with deterministic BM25, exact phrase matching, optional semantic retrieval, or reciprocal-rank fusion. |
 | `pdf_get_pages` | Return selected cited elements as structured data or Markdown in text, balanced, or fidelity mode under explicit budgets. |
 | `pdf_get_element` | Resolve one element, including bounded table slices, only in its expected extraction generation. |
 | `pdf_render_page` | Render a bounded page or crop as PNG or JPEG, returned inline only by explicit request. |

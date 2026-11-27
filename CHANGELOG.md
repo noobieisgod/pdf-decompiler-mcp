@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added phrase search for ordered, consecutive words, with citations to the matching elements.
+
 - Search now reuses the cached term positions to score queries without recounting every token.
 
 - Automatic OCR now searches large image regions on pages with sparse native text and retains the native text.

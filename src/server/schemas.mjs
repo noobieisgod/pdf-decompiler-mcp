@@ -235,7 +235,7 @@ export const OpenSchema = z.object({
 });
 export const DocumentInfoSchema = z.object(DocumentReference);
 export const SearchSchema = z.object({
-    ...DocumentReference, query: z.string().min(1), strategy: z.enum(['full_text', 'semantic', 'hybrid']).optional(),
+    ...DocumentReference, query: z.string().min(1), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']).optional(),
     pages: z.array(z.number().int().min(1)).optional(),
     elementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(), cursor: z.string().min(1).optional(), budget: BudgetSchema,
 });
@@ -320,7 +320,7 @@ const DocumentInfoDataSchema = z.object({
     exports: z.object({ markdown: z.object({ status: z.enum(['ready', 'generatable', 'partial_generation', 'unavailable_limit']), resourceUri: z.string().startsWith('pdf-decompiler://').nullable() }) }),
 });
 const SearchDataSchema = z.object({
-    query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid']), results: z.array(SearchResultSchema),
+    query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']), results: z.array(SearchResultSchema),
 });
 const StructuredPagesDataSchema = z.object({
     outputFormat: z.literal('structured'), mode: z.enum(['text', 'balanced', 'fidelity']), pages: z.array(z.number().int().positive()), elements: z.array(ElementSchema),

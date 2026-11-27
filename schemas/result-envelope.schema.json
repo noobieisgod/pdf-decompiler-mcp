@@ -1718,7 +1718,8 @@
                   "enum": [
                     "full_text",
                     "semantic",
-                    "hybrid"
+                    "hybrid",
+                    "phrase"
                   ]
                 },
                 "results": {

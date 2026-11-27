@@ -1,4 +1,7 @@
+import { PdfDecompilerError } from '../core/errors.mjs';
+
 const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
+const MAX_PHRASE_TOKENS = 64;
 
 export function tokenize(value) {
     return String(value || '').normalize('NFKC').toLocaleLowerCase('und').match(TOKEN_PATTERN) || [];
@@ -69,7 +72,11 @@ export function buildBm25(model) {
 }
 
 export function searchBm25(index, query, options = {}) {
-    const queryTokens = [...new Set(tokenize(query))];
+    const phraseTokens = tokenize(query);
+    if (options.phrase && phraseTokens.length > MAX_PHRASE_TOKENS) {
+        throw new PdfDecompilerError('invalid_input', `Phrase search supports up to ${MAX_PHRASE_TOKENS} words.`);
+    }
+    const queryTokens = [...new Set(phraseTokens)];
     if (!queryTokens.length) return [];
     const k1 = 1.2;
     const b = 0.75;
@@ -95,10 +102,29 @@ export function searchBm25(index, query, options = {}) {
             score += idf * ((frequency * (k1 + 1)) / denominator);
         }
         if (score > 0) {
+            let phraseStart = null;
+            if (options.phrase) {
+                if (matchedTerms.length !== queryTokens.length) continue;
+                phraseStart = document.positions[phraseTokens[0]].find(start =>
+                    phraseTokens.every((token, offset) => document.tokens[start + offset] === token));
+                if (phraseStart === undefined) continue;
+            }
             const snippetChars = options.snippetChars || 500;
-            const snippetSource = document.contextText || document.text;
+            const snippetSource = options.phrase ? document.text.normalize('NFKC') : document.contextText || document.text;
             const normalizedText = snippetSource.normalize('NFKC').toLocaleLowerCase('und');
-            const firstMatch = queryTokens.map(token => normalizedText.indexOf(token)).filter(position => position >= 0).sort((a, b) => a - b)[0] ?? 0;
+            let firstMatch = 0;
+            if (phraseStart === null) {
+                firstMatch = queryTokens.map(token => normalizedText.indexOf(token)).filter(position => position >= 0).sort((a, b) => a - b)[0] ?? 0;
+            } else {
+                let tokenPosition = 0;
+                for (const match of normalizedText.matchAll(TOKEN_PATTERN)) {
+                    if (tokenPosition === phraseStart) {
+                        firstMatch = match.index;
+                        break;
+                    }
+                    tokenPosition += 1;
+                }
+            }
             const start = Math.max(0, firstMatch - Math.floor(snippetChars / 3));
             matches.push({
                 id: document.id,

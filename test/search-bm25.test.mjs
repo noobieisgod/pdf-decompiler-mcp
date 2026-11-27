@@ -44,3 +44,20 @@ test('BM25 snippets include neighboring values and adjacent hits are grouped wit
     assert.equal(new Set(results.map(result => `${result.page}:${result.snippet}`)).size, results.length);
     assert.ok(results.every(result => result.contributingElementIds.length >= 1));
 });
+
+test('phrase search requires the normalized token sequence, including repeated words', () => {
+    const raw = rawDocument(1);
+    raw.pages[0].tables = [];
+    raw.pages[0].textBlocks = [
+        { text: 'Income net net', role: 'text', bbox: { x: 10, y: 10, width: 100, height: 10 } },
+        { text: 'Net income', role: 'text', bbox: { x: 10, y: 30, width: 100, height: 10 } },
+        { text: 'Opening note. '.repeat(80) + 'Ｎｅｔ net income rises.', role: 'text', bbox: { x: 10, y: 50, width: 100, height: 10 } },
+    ];
+    const index = buildBm25(buildCanonicalModel(Buffer.from('%PDF-search-phrase'), raw, config, 'deps'));
+    const expected = index.documents.find(document => document.text.includes('income rises'));
+    const [hit, ...other] = searchBm25(index, 'net net income', { phrase: true });
+    assert.deepEqual(other, []);
+    assert.deepEqual(hit.contributingElementIds, [expected.id]);
+    assert.match(hit.snippet, /Net net income rises\./);
+    assert.throws(() => searchBm25(index, 'net '.repeat(65), { phrase: true }), { code: 'invalid_input' });
+});
