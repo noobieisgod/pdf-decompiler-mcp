@@ -383,6 +383,8 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
 
     const extractionStartMs = Date.now();
     const keyPages = new Map();
+    const reusablePages = new Map();
+    let reusableBytes = Math.min(8 * 1024 * 1024, Math.floor((options.maxDecompressedBytes ?? 512 * 1024 * 1024) / 16));
     let timedOut = false;
     let nextPage = null;
     const canDetectRepeatingBands = pageNums.length >= HF_MIN_PAGES;
@@ -400,6 +402,15 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
                 continue;
             }
             collectHFKeyPages(pageData.rawItems, pageData.pageHeight, pageData.pageNum, keyPages);
+            // Bound retained text data while reusing the first pass's PDF.js results.
+            const estimatedBytes = 1024 + pageData.rawItems.length * 320;
+            if (estimatedBytes <= reusableBytes) {
+                const pageBytes = estimatedBytes + pageData.rawItems.reduce((sum, item) => sum + item.str.length * 4, 0);
+                if (pageBytes <= reusableBytes) {
+                    reusablePages.set(pageData.pageNum, pageData);
+                    reusableBytes -= pageBytes;
+                }
+            }
             pageData.pdfjsPage?.cleanup?.();
         }
         if (Date.now() - extractionStartMs > timeBudgetMs && idx + PAGE_LOAD_CHUNK_SIZE < pageNums.length) {
@@ -419,6 +430,7 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
         }
         return result;
     })();
+    keyPages.clear();
 
     const hfHeaderSamples = new Set();
     const hfFooterSamples = new Set();
@@ -433,7 +445,11 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
             break;
         }
         const chunkPageNums = pageNums.slice(idx, Math.min(idx + PAGE_PROCESS_CHUNK_SIZE, processUntil));
-        const chunk = await Promise.all(chunkPageNums.map(pageNum => tryLoadPageData(documentBackend, pageNum)));
+        const chunk = await Promise.all(chunkPageNums.map(pageNum => {
+            const cached = reusablePages.get(pageNum);
+            reusablePages.delete(pageNum);
+            return cached ?? tryLoadPageData(documentBackend, pageNum);
+        }));
         debugTiming('extract:process-load', `pages=${chunkPageNums.join(',')}`, `${Date.now() - startedAt}ms`);
         if (hfPositions.size > 0) {
             for (const pageData of chunk) {
@@ -477,6 +493,7 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
         }
     }
 
+    reusablePages.clear();
     suppressRepeatedFooterArtifacts(rawPageResults);
 
     let globalImageIdx = 1;

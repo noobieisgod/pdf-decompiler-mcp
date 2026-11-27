@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reuse a bounded amount of page text between header detection and extraction to avoid parsing it twice.
+
 - No-cache opens keep PDF bytes and extraction indexes in memory instead of writing a duplicate disk generation.
 
 - Search reports text coverage gaps and warns when a search with no hits may have missed unread pages.

@@ -2,11 +2,22 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { loadConfig } from '../src/config/runtime.mjs';
+import { extractPageContent } from '../src/extract/document.mjs';
 import { anchorLinkAnnotations } from '../src/extract/links.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
+import { buildSyntheticPdf } from './fixtures/generate-fixtures.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
+
+test('reusing the header pass produces the same extraction as loading each page again', async () => {
+    const bytes = buildSyntheticPdf({ pages: ['First body', 'Second body'], link: true });
+    const options = { ocrPolicy: 'off' };
+    const reused = await extractPageContent(bytes, undefined, 1200, options);
+    const reloaded = await extractPageContent(bytes, undefined, 1200, { ...options, maxDecompressedBytes: 12_000 });
+    assert.equal(reused.pages.length, 2);
+    assert.deepEqual(reused, reloaded);
+});
 
 async function managerFor(t) {
     const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [fixtureRoot], ocrPolicy: 'off', extractionTimeoutMs: 50_000 })).init();
