@@ -1901,12 +1901,33 @@
                     ],
                     "additionalProperties": false
                   }
+                },
+                "textCoverage": {
+                  "type": "object",
+                  "properties": {
+                    "unprocessedPages": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "uncertainPages": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "unprocessedPages",
+                    "uncertainPages"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
                 "query",
                 "strategy",
-                "results"
+                "results",
+                "textCoverage"
               ],
               "additionalProperties": false
             },

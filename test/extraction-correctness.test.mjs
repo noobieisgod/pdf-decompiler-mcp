@@ -30,10 +30,16 @@ test('text retrieval distinguishes an OCR-disabled scan from a blank page', asyn
         message: 'No native text was extracted from this image-only page. OCR is disabled by policy. Use pdf_render_page to inspect the page visually.',
         page: 1,
     }]);
+    const scanSearch = await manager.search({ ...scan.opened, query: 'missing words', strategy: 'phrase' });
+    assert.deepEqual(scanSearch.textCoverage, { unprocessedPages: 0, uncertainPages: 1 });
+    assert.ok(scanSearch.warnings.some(warning => warning.code === 'search_text_coverage_incomplete'));
     const blank = await modelFor(manager, 'blank.pdf');
     const empty = await manager.getPages({ ...blank.opened, pages: [1], mode: 'text', outputFormat: 'markdown' });
     assert.equal(empty.markdown, '');
     assert.deepEqual(empty.warnings, [{ code: 'page_warning', message: 'Blank page', page: 1 }]);
+    const blankSearch = await manager.search({ ...blank.opened, query: 'missing words', strategy: 'phrase' });
+    assert.deepEqual(blankSearch.textCoverage, { unprocessedPages: 0, uncertainPages: 0 });
+    assert.deepEqual(blankSearch.warnings, []);
 });
 
 function assertValidBbox(bbox, page) {

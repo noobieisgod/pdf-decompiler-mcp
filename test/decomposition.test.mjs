@@ -70,6 +70,9 @@ test('concurrent scoped opens add only missing pages to the shared document', as
     const result = await manager.getPages({ ...existing, pages: [1, 2, 3], mode: 'text' });
     assert.equal(result.completion.requestedScopeComplete, false);
     assert.deepEqual(result.elements.map(element => element.page), [1, 3]);
+    const missing = await manager.search({ ...existing, query: 'unrequested middle page', pages: [2], strategy: 'phrase' });
+    assert.deepEqual(missing.textCoverage, { unprocessedPages: 1, uncertainPages: 0 });
+    assert.equal(missing.warnings[0].code, 'search_text_coverage_incomplete');
     assert.equal((await manager.search({ ...existing, query: 'selected third page', strategy: 'phrase' })).results[0].page, 3);
     assert.deepEqual((await manager.search({ ...existing, query: 'selected', strategy: 'semantic' })).results.map(hit => hit.page), [1, 3]);
     const limited = await manager.getPages({ ...existing, pages: [1, 3], mode: 'text', budget: { textBlocks: 1 } });

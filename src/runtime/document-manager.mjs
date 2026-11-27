@@ -449,17 +449,25 @@ export class DocumentManager {
         };
         const bounded = applyResultBudget(results, selectionBudget, start);
         const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ documentId: state.model.documentId, extractionFingerprint: state.model.extractionFingerprint, operation: 'pdf_search', argumentsValue: cursorArguments, position: bounded.nextOffset });
-        const scopePages = args.pages?.length ? args.pages : Array.from({ length: model.totalPages }, (_, index) => index + 1);
+        const scopedPages = args.pages?.length ? new Set(args.pages) : null;
+        const requested = scopedPages ? model.pages.filter(page => scopedPages.has(page.number)) : model.pages;
+        const unprocessedPages = (scopedPages?.size ?? model.totalPages) - requested.length;
+        const uncertainPages = requested.filter(page => page.extractionMode === 'error' || page.ocr.rejectedRegions > 0
+            || (!page.visualSignals.hasText && !page.ocr.accepted && page.visualType !== 'none')).length;
+        if (!results.length && (unprocessedPages || uncertainPages)) {
+            warnings.push({ code: 'search_text_coverage_incomplete', message: 'Some requested pages were unprocessed or may contain unread text. Inspect page status before treating zero results as absence.' });
+        }
         return {
             query: args.query,
             strategy,
             results: bounded.items,
+            textCoverage: { unprocessedPages, uncertainPages },
             citations: dedupe(bounded.items.flatMap(result => result.citations || [result.citation])),
             warnings,
             omissions: bounded.omissions,
             budget: { configured: requestedBudget, usage: bounded.usage, estimators: { text: 'utf8_bytes_divided_by_4' } },
             nextCursor,
-            completion: { documentComplete: completeDocument(model), requestedScopeComplete: requestedPagesComplete(model, scopePages), resultComplete: nextCursor === null },
+            completion: { documentComplete: completeDocument(model), requestedScopeComplete: unprocessedPages === 0, resultComplete: nextCursor === null },
         };
         });
     }

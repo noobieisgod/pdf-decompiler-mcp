@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Search reports text coverage gaps and warns when a search with no hits may have missed unread pages.
+
 - Opening a new page range on an active PDF now fills the requested pages without extracting unrelated pages.
 
 - Added phrase search for ordered, consecutive words, with citations to the matching elements.

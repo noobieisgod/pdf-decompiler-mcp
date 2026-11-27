@@ -321,6 +321,7 @@ const DocumentInfoDataSchema = z.object({
 });
 const SearchDataSchema = z.object({
     query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']), results: z.array(SearchResultSchema),
+    textCoverage: z.object({ unprocessedPages: z.number().int().nonnegative(), uncertainPages: z.number().int().nonnegative() }),
 });
 const StructuredPagesDataSchema = z.object({
     outputFormat: z.literal('structured'), mode: z.enum(['text', 'balanced', 'fidelity']), pages: z.array(z.number().int().positive()), elements: z.array(ElementSchema),
