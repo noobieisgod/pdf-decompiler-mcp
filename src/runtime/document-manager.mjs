@@ -43,7 +43,7 @@ function dedupe(values) {
     return [...new Map(values.map(value => [JSON.stringify(value), value])).values()];
 }
 
-function pageRanges(pages) {
+function pageIntervals(pages) {
     const sorted = [...new Set(pages)].sort((a, b) => a - b);
     const ranges = [];
     for (const page of sorted) {
@@ -51,7 +51,11 @@ function pageRanges(pages) {
         if (last && page === last[1] + 1) last[1] = page;
         else ranges.push([page, page]);
     }
-    return ranges.map(([start, end]) => start === end ? String(start) : `${start}-${end}`).join(',');
+    return ranges.map(([start, end]) => ({ start, end }));
+}
+
+function pageRanges(pages) {
+    return pageIntervals(pages).map(({ start, end }) => start === end ? String(start) : `${start}-${end}`).join(',');
 }
 
 function summarizePageWarnings(pages) {
@@ -124,6 +128,8 @@ export class DocumentManager {
         this.currentGeneration = new Map();
         this.closedStates = new Set();
         this.closedHandles = new Map();
+        this.openLocks = new Map();
+        this.closing = false;
     }
 
     async init() {
@@ -194,6 +200,21 @@ export class DocumentManager {
         return descriptor;
     }
 
+    async withOpenLock(key, operation) {
+        if (this.closing) throw new PdfDecompilerError('closed_document', 'The document manager is closing.');
+        const previous = this.openLocks.get(key);
+        let release;
+        const current = new Promise(resolve => { release = resolve; });
+        this.openLocks.set(key, current);
+        try {
+            await previous;
+            return await operation();
+        } finally {
+            release();
+            if (this.openLocks.get(key) === current) this.openLocks.delete(key);
+        }
+    }
+
     async open(args) {
         if (args.cursor) return this.continueOpen(args);
         const loaded = await loadPdfSource(args.source, this.config);
@@ -202,12 +223,23 @@ export class DocumentManager {
         const extractionConfig = { ...this.config, ocrPolicy: args.ocrPolicy || this.config.ocrPolicy };
         const generation = this.generationForCurrentConfig(extractionConfig);
         const key = stateKey(documentId, generation);
+        return this.withOpenLock(key, () => this.openLoaded(args, loaded, descriptor, extractionConfig, documentId, generation));
+    }
+
+    async openLoaded(args, loaded, descriptor, extractionConfig, documentId, generation) {
+        const key = stateKey(documentId, generation);
         const active = this.states.get(key);
         if (active) {
             if (active.closing) throw new PdfDecompilerError('closed_document', 'The document generation is closing.');
             if (args.refresh) throw new PdfDecompilerError('active_generation', 'Close the active extraction generation before refreshing it.');
+            const requestedPages = openScopePages(args.pages, active.model.totalPages);
+            const processed = new Set(active.model.pages.map(page => page.number));
+            const missing = args.pages ? requestedPages.filter(page => !processed.has(page)) : [];
+            if (missing.length) {
+                await this.extendOpen(active, pageIntervals(missing), args.maxImageDimension);
+            }
             this.addSourceHandle(active, descriptor);
-            return this.openResult(active, descriptor, { cacheHit: true, requestedPages: openScopePages(args.pages, active.model.totalPages) });
+            return this.openResult(active, descriptor, { cacheHit: missing.length === 0, requestedPages });
         }
         if (!args.refresh && this.config.cache.mode === 'persistent') {
             const cached = await this.cache.loadGeneration(documentId, generation);
@@ -271,6 +303,10 @@ export class DocumentManager {
 
     async continueOpen(args) {
         if (!args.documentId || !args.extractionFingerprint || !args.sourceId) throw new PdfDecompilerError('invalid_cursor_context', 'Continuation requires documentId, extractionFingerprint, and sourceId.');
+        return this.withOpenLock(stateKey(args.documentId, args.extractionFingerprint), () => this.continueOpenLocked(args));
+    }
+
+    async continueOpenLocked(args) {
         const state = await this.requireState(args.documentId, args.extractionFingerprint);
         const descriptor = state.handles.get(args.sourceId);
         if (!descriptor) throw new PdfDecompilerError('SOURCE_HANDLE_UNKNOWN', 'The source handle is unavailable.');
@@ -282,31 +318,33 @@ export class DocumentManager {
         });
         if (nextPage !== state.model.partial?.nextPage) throw new PdfDecompilerError('stale_cursor', 'The decomposition cursor no longer matches document state.');
         const pages = missingPageIntervals(state.model.totalPages, state.model.pages.map(page => page.number));
-        const extracted = await runExtractionSubprocess(state.pdfBytes, state.extractionConfig, {
-            pages,
-            maxImageDim: args.maxImageDimension,
-        });
+        await this.extendOpen(state, pages, args.maxImageDimension);
+        return this.openResult(state, descriptor, { cacheHit: false, requestedPages: openScopePages(pages, state.model.totalPages) });
+    }
+
+    async extendOpen(state, pages, maxImageDim) {
+        const extracted = await runExtractionSubprocess(state.pdfBytes, state.extractionConfig, { pages, maxImageDim });
         const incoming = buildCanonicalModel(state.pdfBytes, extracted.result, state.extractionConfig, dependencyFingerprint);
-        state.model = mergeCanonicalModels(state.model, incoming);
-        const missing = missingPageIntervals(state.model.totalPages, state.model.pages.map(page => page.number));
-        if (!state.model.partial && missing.length) {
-            state.model.partial = {
-                timedOut: false,
+        const model = mergeCanonicalModels(state.model, incoming);
+        const missing = missingPageIntervals(model.totalPages, model.pages.map(page => page.number));
+        model.partial = missing.length
+            ? {
+                ...model.partial,
+                timedOut: Boolean(model.partial?.timedOut),
                 selectionIncomplete: true,
                 nextPage: missing[0].start,
-                processedPages: state.model.pages.length,
-                remainingPages: missing.reduce((sum, interval) => sum + interval.end - interval.start + 1, 0),
-            };
-        }
-        state.bm25 = buildBm25Safely(state.model, this.config.debug);
-        state.indexes = indexModel(state.model);
-        state.diagnostics = extracted.diagnostics;
-        if (!state.model.partial && !state.persisted) {
-            await this.cache.saveGeneration(state.model, state.pdfBytes, state.bm25, state.semantic);
-            state.leaseId = await this.cache.acquireLease(state.model.documentId, state.model.extractionFingerprint);
+                processedPages: model.pages.length,
+                remainingPages: model.totalPages - model.pages.length,
+            }
+            : null;
+        const bm25 = buildBm25Safely(model, this.config.debug);
+        const indexes = indexModel(model);
+        if (!model.partial && !state.persisted) {
+            await this.cache.saveGeneration(model, state.pdfBytes, bm25);
+            state.leaseId = await this.cache.acquireLease(model.documentId, model.extractionFingerprint);
             state.persisted = true;
         }
-        return this.openResult(state, descriptor, { cacheHit: false, requestedPages: openScopePages(pages, state.model.totalPages) });
+        Object.assign(state, { model, bm25, indexes, semantic: null, diagnostics: extracted.diagnostics });
     }
 
     async requireState(documentId, generation = null) {
@@ -371,6 +409,7 @@ export class DocumentManager {
 
     async search(args) {
         return this.withOperation(args.documentId, args.extractionFingerprint, async state => {
+        const model = state.model;
         const strategy = args.strategy || 'full_text';
         const options = { pages: args.pages, elementTypes: args.elementTypes, phrase: strategy === 'phrase' };
         const warnings = [];
@@ -382,11 +421,12 @@ export class DocumentManager {
             } else {
                 try {
                     state.embedder ||= await this.embedderFactory(this.config, path.join(this.cache.root, 'models'), this.injectedEmbedder);
-                    if (!state.semantic) {
-                        state.semantic = await buildSemanticIndex(state.model, state.embedder);
-                        if (state.persisted) await this.cache.saveSemanticIndex(state.model.documentId, state.model.extractionFingerprint, state.semantic);
+                    const semantic = (state.model === model ? state.semantic : null) || await buildSemanticIndex(model, state.embedder);
+                    if (state.model === model && state.semantic !== semantic) {
+                        state.semantic = semantic;
+                        if (state.persisted) await this.cache.saveSemanticIndex(model.documentId, model.extractionFingerprint, semantic);
                     }
-                    const semanticResults = await searchSemantic(state.semantic, args.query, state.embedder, options);
+                    const semanticResults = await searchSemantic(semantic, args.query, state.embedder, options);
                     results = strategy === 'semantic' ? semanticResults : reciprocalRankFusion([bm25Results, semanticResults], 60);
                 } catch {
                     warnings.push({ code: 'semantic_unavailable', message: 'Semantic retrieval failed; BM25 results were returned.' });
@@ -394,7 +434,7 @@ export class DocumentManager {
                 }
             }
         }
-        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), strategy, pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null };
+        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), strategy, pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null, ...(model.partial ? { processedPages: model.processedPages } : {}) };
         const start = args.cursor ? this.cursors.decode(args.cursor, {
             documentId: state.model.documentId,
             extractionFingerprint: state.model.extractionFingerprint,
@@ -409,7 +449,7 @@ export class DocumentManager {
         };
         const bounded = applyResultBudget(results, selectionBudget, start);
         const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ documentId: state.model.documentId, extractionFingerprint: state.model.extractionFingerprint, operation: 'pdf_search', argumentsValue: cursorArguments, position: bounded.nextOffset });
-        const scopePages = args.pages?.length ? args.pages : Array.from({ length: state.model.totalPages }, (_, index) => index + 1);
+        const scopePages = args.pages?.length ? args.pages : Array.from({ length: model.totalPages }, (_, index) => index + 1);
         return {
             query: args.query,
             strategy,
@@ -419,7 +459,7 @@ export class DocumentManager {
             omissions: bounded.omissions,
             budget: { configured: requestedBudget, usage: bounded.usage, estimators: { text: 'utf8_bytes_divided_by_4' } },
             nextCursor,
-            completion: { documentComplete: completeDocument(state.model), requestedScopeComplete: requestedPagesComplete(state.model, scopePages), resultComplete: nextCursor === null },
+            completion: { documentComplete: completeDocument(model), requestedScopeComplete: requestedPagesComplete(model, scopePages), resultComplete: nextCursor === null },
         };
         });
     }
@@ -472,6 +512,7 @@ export class DocumentManager {
             hardBudgetFingerprint: fingerprint(HARD_BUDGET),
             canonicalFormatVersion: state.model.canonicalFormatVersion,
             extractionRevision: state.model.extractionRevision,
+            ...(state.model.partial ? { processedPages: state.model.processedPages } : {}),
             markdownFormatVersion: outputFormat === 'markdown' ? MARKDOWN_FORMAT_VERSION : null,
             markdownSerializerRevision: outputFormat === 'markdown' ? MARKDOWN_SERIALIZER_REVISION : null,
         };
@@ -730,8 +771,12 @@ export class DocumentManager {
     }
 
     async closeDocument(args) {
-        timingMark('document_lookup');
         const key = stateKey(args.documentId, args.extractionFingerprint);
+        return this.withOpenLock(key, () => this.closeDocumentLocked(args, key));
+    }
+
+    async closeDocumentLocked(args, key) {
+        timingMark('document_lookup');
         const state = this.states.get(key);
         if (!state) {
             if (args.sourceId && this.closedHandles.has(args.sourceId)) throw new PdfDecompilerError('SOURCE_HANDLE_ALREADY_CLOSED', 'The source handle is already closed.');
@@ -770,6 +815,8 @@ export class DocumentManager {
     }
 
     async close() {
+        this.closing = true;
+        await Promise.all(this.openLocks.values());
         for (const state of this.states.values()) {
             state.closing = true;
             state.handles.clear();

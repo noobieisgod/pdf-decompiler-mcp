@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Opening a new page range on an active PDF now fills the requested pages without extracting unrelated pages.
+
 - Added phrase search for ordered, consecutive words, with citations to the matching elements.
 
 - Search now reuses the cached term positions to score queries without recounting every token.

@@ -54,6 +54,33 @@ test('identical bytes are stable on cold and warm persistent-cache opens', async
     assert.deepEqual((await secondManager.getPages(warm)).elements.map(item => item.id), coldIds);
 });
 
+test('concurrent scoped opens add only missing pages to the shared document', async t => {
+    const { root, config } = await temporaryConfig(t, { cacheMode: 'none', semanticEnabled: true });
+    const source = path.join(root, 'scope.pdf');
+    await fs.writeFile(source, buildSyntheticPdf({ pages: ['Selected first page', 'Unrequested middle page', 'Selected third page'] }));
+    const manager = await new DocumentManager(config, { embedder: async values => values.map(() => [1]) }).init();
+    t.after(() => manager.close());
+    const [first, third] = await Promise.all([1, 3].map(page => manager.open({ source, pages: [{ start: page, end: page }] })));
+    assert.ok(first.completion.requestedScopeComplete && third.completion.requestedScopeComplete);
+    assert.equal(first.extractionFingerprint, third.extractionFingerprint);
+    assert.notEqual(first.sourceId, third.sourceId);
+    const existing = await manager.open({ source, pages: [{ start: 3, end: 3 }] });
+    assert.equal(existing.cacheHit, true);
+    assert.equal(existing.processedPages, 2);
+    const result = await manager.getPages({ ...existing, pages: [1, 2, 3], mode: 'text' });
+    assert.equal(result.completion.requestedScopeComplete, false);
+    assert.deepEqual(result.elements.map(element => element.page), [1, 3]);
+    assert.equal((await manager.search({ ...existing, query: 'selected third page', strategy: 'phrase' })).results[0].page, 3);
+    assert.deepEqual((await manager.search({ ...existing, query: 'selected', strategy: 'semantic' })).results.map(hit => hit.page), [1, 3]);
+    const limited = await manager.getPages({ ...existing, pages: [1, 3], mode: 'text', budget: { textBlocks: 1 } });
+    assert.ok(limited.nextCursor);
+    const completed = await manager.open({ ...existing, cursor: existing.nextCursor });
+    assert.equal(completed.completion.documentComplete, true);
+    assert.equal(completed.processedPages, 3);
+    assert.deepEqual((await manager.search({ ...completed, query: 'selected', strategy: 'semantic' })).results.map(hit => hit.page), [1, 2, 3]);
+    await assert.rejects(manager.getPages({ ...completed, cursor: limited.nextCursor }), { code: 'changed_cursor_arguments' });
+});
+
 test('decomposition records visual pages without eager page-render assets', async t => {
     const { root, config } = await temporaryConfig(t, { cacheMode: 'none' });
     const source = path.join(root, 'visual.pdf');
