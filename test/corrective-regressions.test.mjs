@@ -105,4 +105,23 @@ test('open completion, cursor-only pages, and exact wire budgets follow the publ
     assert.equal(search.isError, undefined);
     assert.ok(search.structuredContent.budget.usage.responseBytes <= 12_000);
     assert.ok(search.structuredContent.budget.usage.estimatedTokens <= 3_000);
+
+    const columns = await client.callTool({ name: 'pdf_open', arguments: { source: path.join(fixtureRoot, 'multi-column.pdf') } });
+    const columnRef = { documentId: columns.structuredContent.documentId, extractionFingerprint: columns.structuredContent.extractionFingerprint };
+    const markdown = { ...columnRef, pages: [1], mode: 'text', outputFormat: 'markdown' };
+    const full = await client.callTool({ name: 'pdf_get_pages', arguments: markdown });
+    const compact = await client.callTool({ name: 'pdf_get_pages', arguments: { ...markdown, citationDetail: 'compact' } });
+    assert.ok(full.structuredContent.citations.length > 10);
+    assert.equal(compact.structuredContent.data.markdown, full.structuredContent.data.markdown);
+    assert.deepEqual(compact.structuredContent.citations, []);
+    assert.deepEqual(compact.structuredContent.data.citationRefs.map(citation => ({ ...columnRef, ...citation })), full.structuredContent.citations);
+    assert.ok(Buffer.byteLength(JSON.stringify(compact)) < 0.65 * Buffer.byteLength(JSON.stringify(full)));
+
+    const firstCompact = await client.callTool({ name: 'pdf_get_pages', arguments: { ...markdown, citationDetail: 'compact', budget: { textBlocks: 1 } } });
+    const cursor = firstCompact.structuredContent.nextCursor;
+    assert.ok(cursor);
+    const continued = await client.callTool({ name: 'pdf_get_pages', arguments: { ...columnRef, cursor } });
+    assert.ok(continued.structuredContent.data.citationRefs.length);
+    const changedDetail = await client.callTool({ name: 'pdf_get_pages', arguments: { ...columnRef, cursor, citationDetail: 'full' } });
+    assert.equal(changedDetail.structuredContent.data.error.code, 'changed_cursor_arguments');
 });

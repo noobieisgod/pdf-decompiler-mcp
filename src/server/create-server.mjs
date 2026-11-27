@@ -216,7 +216,7 @@ export function createServer(manager) {
 
     server.registerTool('pdf_get_pages', {
         title: 'Get PDF page elements',
-        description: 'Return deterministic cited elements for selected pages under explicit response budgets and signed cursors. Start textual questions with mode text, which excludes figures. The default balanced mode adds captioned figure references without inline image bytes. Escalate only relevant pages to fidelity or pdf_render_page when visual evidence is needed.',
+        description: 'Return deterministic cited elements for selected pages under explicit response budgets and signed cursors. Start textual questions with mode text, which excludes figures. Use outputFormat markdown and citationDetail compact for low-context cited reading. The default balanced mode adds captioned figure references without inline image bytes. Escalate only relevant pages to fidelity or pdf_render_page when visual evidence is needed.',
         inputSchema: GetPagesSchema,
         outputSchema: OutputSchemas.pdf_get_pages,
         annotations: READ_ONLY,

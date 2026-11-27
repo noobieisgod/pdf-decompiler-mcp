@@ -4006,6 +4006,61 @@
                         "type": "string",
                         "pattern": "^pdf-decompiler:\\/\\/.*"
                       }
+                    },
+                    "citationRefs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "pageId": {
+                            "type": "string",
+                            "pattern": "^page:\\d+$"
+                          },
+                          "elementId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "bbox": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "width": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "height": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "width",
+                                  "height"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "pageId",
+                          "elementId",
+                          "bbox"
+                        ],
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "required": [

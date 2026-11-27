@@ -443,6 +443,8 @@ export class DocumentManager {
         const mode = args.mode || restoredArguments?.mode || 'balanced';
         const outputFormat = args.outputFormat || restoredArguments?.outputFormat || 'structured';
         const tableDetail = args.tableDetail || restoredArguments?.tableDetail || (outputFormat === 'markdown' ? 'compact' : 'full');
+        const compactCitations = (args.citationDetail || restoredArguments?.citationDetail) === 'compact';
+        if (compactCitations && outputFormat !== 'markdown') throw new PdfDecompilerError('invalid_input', 'Compact citations require Markdown output.');
         const includeElementTypes = args.includeElementTypes || restoredArguments?.includeElementTypes;
         const excludeElementTypes = args.excludeElementTypes || restoredArguments?.excludeElementTypes;
         if (mode === 'text') elements = elements.filter(element => element.type !== 'figure');
@@ -463,6 +465,7 @@ export class DocumentManager {
             mode,
             outputFormat,
             tableDetail,
+            ...(compactCitations ? { citationDetail: 'compact' } : {}),
             includeElementTypes: includeElementTypes || null,
             excludeElementTypes: excludeElementTypes || null,
             requestedBudget: resolvedBudget,
@@ -485,10 +488,12 @@ export class DocumentManager {
             const value = element.type === 'table' && tableDetail === 'compact' ? compactTable(element) : element;
             const fragment = outputFormat === 'markdown' ? serializeElementMarkdown(value, { tableDetail }) : null;
             const encoded = outputFormat === 'markdown' ? fragment : JSON.stringify(value);
+            const { pageId, elementId, bbox } = value.citation;
+            const citation = compactCitations ? { pageId, elementId, bbox } : value.citation;
             return {
-                value: { element: value, markdown: fragment },
+                value: { element: value, citation },
                 encoded,
-                bytes: Math.ceil(Buffer.byteLength(encoded) * 1.15) + Buffer.byteLength(JSON.stringify(value.citation)) + 256,
+                bytes: Math.ceil(Buffer.byteLength(encoded) * 1.15) + Buffer.byteLength(JSON.stringify(citation)) + 256,
                 counts: {
                     textBlocks: value.type === 'block' ? 1 : 0,
                     tables: value.type === 'table' ? 1 : 0,
@@ -519,6 +524,7 @@ export class DocumentManager {
             pages: requestedPages,
             markdown: serializePagedMarkdown(selected, requestedPages, { tableDetail }),
             resourceUris,
+            ...(compactCitations ? { citationRefs: bounded.items.map(item => item.citation) } : {}),
         } : {
             outputFormat,
             mode,
@@ -527,7 +533,7 @@ export class DocumentManager {
         };
         return {
             ...data,
-            citations: selected.map(item => item.citation),
+            citations: compactCitations ? [] : selected.map(item => item.citation),
             warnings: summarizePageWarnings(state.model.pages.filter(page => requested.has(page.number))),
             omissions: dedupe([...bounded.omissions, ...relationshipOmissions]),
             budget: { configured: resolvedBudget, usage: bounded.usage, estimators: { text: 'utf8_bytes_divided_by_4', response: 'bounded_fragment_preflight_then_exact_wire_serialization' } },

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added compact Markdown citations that share document identifiers while preserving element locations.
+
 - Explain why text retrieval is empty on image-only pages and point readers to the page renderer.
 
 - Added a `doctor` command and server-level text-first workflow instructions.

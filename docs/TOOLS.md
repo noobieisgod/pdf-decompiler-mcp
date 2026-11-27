@@ -26,7 +26,7 @@ Requires an exact document reference and query. Strategies are `full_text`, `sem
 
 Accepts page numbers or ranges, `text`, `balanced`, or `fidelity` mode, element inclusion and exclusion overrides, budgets, and a cursor. `outputFormat` is `structured` by default or `markdown`. `tableDetail` is `compact` by default or `full`.
 
-Structured data contains only `outputFormat`, `pages`, `elements`, and resource URIs. Markdown data contains only `outputFormat`, `markdownFormatVersion`, `pages`, `markdown`, and resource URIs. Citations, warnings, diagnostics, omissions, budget, completion, and cursor remain in the common envelope.
+Markdown data contains `outputFormat`, `markdownFormatVersion`, `pages`, `markdown`, and resource URIs. For smaller cited responses, set `citationDetail: "compact"` with Markdown output. The envelope's `citations` array is empty in this mode and `data.citationRefs` contains each citation's `pageId`, `elementId`, and `bbox`. Add the envelope's `documentId` and `extractionFingerprint` to each reference to recover the full citation. The cursor preserves the chosen detail. Full citations remain the default.
 
 Paged retrieval uses deterministic fair allocation across the normalized requested-page order. Version 3 cursors authenticate and restore page order, per-page positions, current round-robin position, format, table detail, filters, inclusion overrides, budgets, extraction generation, and serializer versions. A continuation may therefore supply only the document reference and cursor. Explicit repeated selectors must match. Permanently oversized items produce an omission and are advanced. The server never returns a zero-progress cursor.
 

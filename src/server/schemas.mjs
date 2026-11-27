@@ -19,12 +19,15 @@ export const DocumentReference = {
     extractionFingerprint: ExtractionFingerprintSchema.describe('Exact extraction generation to resolve.'),
 };
 
-export const CitationSchema = z.object({
-    documentId: DocumentIdSchema,
-    extractionFingerprint: ExtractionFingerprintSchema,
+const CitationRefSchema = z.object({
     pageId: z.string().regex(/^page:\d+$/),
     elementId: z.string().min(1),
     bbox: NullableBoundingBoxSchema,
+});
+export const CitationSchema = z.object({
+    documentId: DocumentIdSchema,
+    extractionFingerprint: ExtractionFingerprintSchema,
+    ...CitationRefSchema.shape,
 });
 
 export const LinkDestinationSchema = z.object({
@@ -241,6 +244,7 @@ export const GetPagesSchema = z.object({
     mode: z.enum(['text', 'balanced', 'fidelity']).optional(), includeElementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(),
     excludeElementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(),
     outputFormat: z.enum(['structured', 'markdown']).optional(), tableDetail: z.enum(['compact', 'full']).optional(),
+    citationDetail: z.enum(['compact', 'full']).optional().describe('For Markdown only. Compact references inherit documentId and extractionFingerprint from the response envelope.'),
     cursor: z.string().min(1).optional(), budget: BudgetSchema,
 });
 export const TableSelectionSchema = z.object({
@@ -323,6 +327,7 @@ const StructuredPagesDataSchema = z.object({
 });
 const MarkdownPagesDataSchema = z.object({
     outputFormat: z.literal('markdown'), markdownFormatVersion: z.literal(1), pages: z.array(z.number().int().positive()), markdown: z.string(), resourceUris: z.array(z.string().startsWith('pdf-decompiler://')),
+    citationRefs: z.array(CitationRefSchema).optional(),
 });
 const PagesDataSchema = z.discriminatedUnion('outputFormat', [StructuredPagesDataSchema, MarkdownPagesDataSchema]);
 const TableSelectionResultSchema = z.object({

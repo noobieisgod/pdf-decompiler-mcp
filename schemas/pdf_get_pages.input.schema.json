@@ -89,6 +89,14 @@
         "full"
       ]
     },
+    "citationDetail": {
+      "description": "For Markdown only. Compact references inherit documentId and extractionFingerprint from the response envelope.",
+      "type": "string",
+      "enum": [
+        "compact",
+        "full"
+      ]
+    },
     "cursor": {
       "type": "string",
       "minLength": 1
