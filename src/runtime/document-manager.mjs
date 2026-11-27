@@ -412,7 +412,11 @@ export class DocumentManager {
         return this.withOperation(args.documentId, args.extractionFingerprint, async state => {
         const model = state.model;
         const strategy = args.strategy || 'full_text';
-        const options = { pages: args.pages, elementTypes: args.elementTypes, phrase: strategy === 'phrase' };
+        const granularity = args.granularity || 'element';
+        if (granularity === 'page' && strategy !== 'full_text' && strategy !== 'phrase') {
+            throw new PdfDecompilerError('invalid_input', 'Page granularity supports full-text and phrase search.');
+        }
+        const options = { pages: args.pages, elementTypes: args.elementTypes, phrase: strategy === 'phrase', granularity };
         const warnings = [];
         const bm25Results = searchBm25(state.bm25, args.query, options);
         let results = bm25Results;
@@ -435,7 +439,7 @@ export class DocumentManager {
                 }
             }
         }
-        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), strategy, pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null, ...(model.partial ? { processedPages: model.processedPages } : {}) };
+        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), strategy, ...(granularity === 'page' ? { granularity } : {}), pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null, ...(model.partial ? { processedPages: model.processedPages } : {}) };
         const start = args.cursor ? this.cursors.decode(args.cursor, {
             documentId: state.model.documentId,
             extractionFingerprint: state.model.extractionFingerprint,
@@ -450,7 +454,7 @@ export class DocumentManager {
         };
         const bounded = applyResultBudget(results, selectionBudget, start);
         const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ documentId: state.model.documentId, extractionFingerprint: state.model.extractionFingerprint, operation: 'pdf_search', argumentsValue: cursorArguments, position: bounded.nextOffset });
-        const scopedPages = args.pages?.length ? new Set(args.pages) : null;
+        const scopedPages = args.pages ? new Set(args.pages) : null;
         const requested = scopedPages ? model.pages.filter(page => scopedPages.has(page.number)) : model.pages;
         const unprocessedPages = (scopedPages?.size ?? model.totalPages) - requested.length;
         const uncertainPages = requested.filter(page => page.extractionMode === 'error' || page.ocr.rejectedRegions > 0
@@ -461,6 +465,7 @@ export class DocumentManager {
         return {
             query: args.query,
             strategy,
+            ...(granularity === 'page' ? { granularity } : {}),
             results: bounded.items,
             textCoverage: { unprocessedPages, uncertainPages },
             citations: dedupe(bounded.items.flatMap(result => result.citations || [result.citation])),

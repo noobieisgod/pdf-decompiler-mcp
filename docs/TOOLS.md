@@ -24,6 +24,8 @@ Requires an exact document reference and query. Strategies are `full_text`, `sem
 
 `textCoverage` counts unprocessed and uncertain pages in the search scope. Uncertain pages include extraction failures, rejected OCR regions, and visual pages with no extracted text. A zero-result search warns when either count is nonzero. Zero counts mean these checks found no known gaps.
 
+Set `granularity: "page"` with `full_text` or `phrase` for one cited excerpt per page. Page ranking uses exact phrase occurrences, then query terms covered, then the strongest matching element. Use `budget.pages` to limit the number of pages per response. The default ranks individual matching elements.
+
 ## `pdf_get_pages`
 
 Accepts page numbers or ranges, `text`, `balanced`, or `fidelity` mode, element inclusion and exclusion overrides, budgets, and a cursor. `outputFormat` is `structured` by default or `markdown`. `tableDetail` is `compact` by default or `full`.

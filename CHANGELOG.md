@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added page-ranked lexical search with one cited excerpt per page.
+
 - Reuse a bounded amount of page text between header detection and extraction to avoid parsing it twice.
 
 - No-cache opens keep PDF bytes and extraction indexes in memory instead of writing a duplicate disk generation.

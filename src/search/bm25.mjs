@@ -89,6 +89,7 @@ export function searchBm25(index, query, options = {}) {
     const pageSet = options.pages ? new Set(options.pages) : null;
     const typeSet = options.elementTypes ? new Set(options.elementTypes) : null;
     const matches = [];
+    const pageMatches = options.granularity === 'page' ? new Map() : null;
     for (const document of index.documents) {
         if (pageSet && !pageSet.has(document.page)) continue;
         if (typeSet && !typeSet.has(document.type)) continue;
@@ -103,14 +104,19 @@ export function searchBm25(index, query, options = {}) {
         }
         if (score > 0) {
             let phraseStart = null;
-            if (options.phrase) {
-                if (matchedTerms.length !== queryTokens.length) continue;
-                phraseStart = document.positions[phraseTokens[0]].find(start =>
-                    phraseTokens.every((token, offset) => document.tokens[start + offset] === token));
-                if (phraseStart === undefined) continue;
+            let occurrences = 0;
+            if ((options.phrase || (pageMatches && phraseTokens.length > 1 && phraseTokens.length <= MAX_PHRASE_TOKENS))
+                && matchedTerms.length === queryTokens.length) {
+                for (const start of document.positions[phraseTokens[0]]) {
+                    if (!phraseTokens.every((token, offset) => document.tokens[start + offset] === token)) continue;
+                    phraseStart ??= start;
+                    occurrences += 1;
+                    if (!pageMatches) break;
+                }
             }
+            if (options.phrase && !occurrences) continue;
             const snippetChars = options.snippetChars || 500;
-            const snippetSource = options.phrase ? document.text.normalize('NFKC') : document.contextText || document.text;
+            const snippetSource = phraseStart !== null ? document.text.normalize('NFKC') : document.contextText || document.text;
             const normalizedText = snippetSource.normalize('NFKC').toLocaleLowerCase('und');
             let firstMatch = 0;
             if (phraseStart === null) {
@@ -126,7 +132,7 @@ export function searchBm25(index, query, options = {}) {
                 }
             }
             const start = Math.max(0, firstMatch - Math.floor(snippetChars / 3));
-            matches.push({
+            const match = {
                 id: document.id,
                 page: document.page,
                 type: document.type,
@@ -137,8 +143,27 @@ export function searchBm25(index, query, options = {}) {
                 citation: document.citation,
                 citations: [document.citation],
                 contributingElementIds: [document.id],
-            });
+            };
+            if (pageMatches) {
+                const pageMatch = pageMatches.get(document.page) || { occurrences: 0, terms: new Set(), bestMatch: null, bestIsExact: false };
+                pageMatch.occurrences += occurrences;
+                matchedTerms.forEach(term => pageMatch.terms.add(term));
+                const isExact = occurrences > 0;
+                if (!pageMatch.bestMatch || (isExact && !pageMatch.bestIsExact) || (isExact === pageMatch.bestIsExact && score > pageMatch.bestMatch.score)) {
+                    pageMatch.bestMatch = match;
+                    pageMatch.bestIsExact = isExact;
+                }
+                pageMatches.set(document.page, pageMatch);
+            } else {
+                matches.push(match);
+            }
         }
+    }
+    if (pageMatches) {
+        return [...pageMatches.values()]
+            .sort((a, b) => b.occurrences - a.occurrences || b.terms.size - a.terms.size
+                || b.bestMatch.score - a.bestMatch.score || a.bestMatch.page - b.bestMatch.page)
+            .map(page => page.bestMatch);
     }
     const grouped = [];
     for (const match of matches.sort((a, b) => a.page - b.page || a.readingOrder - b.readingOrder || a.id.localeCompare(b.id))) {

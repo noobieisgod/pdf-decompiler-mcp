@@ -236,6 +236,7 @@ export const OpenSchema = z.object({
 export const DocumentInfoSchema = z.object(DocumentReference);
 export const SearchSchema = z.object({
     ...DocumentReference, query: z.string().min(1), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']).optional(),
+    granularity: z.enum(['element', 'page']).optional().describe('Page results require full_text or phrase and return one cited match per page.'),
     pages: z.array(z.number().int().min(1)).optional(),
     elementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(), cursor: z.string().min(1).optional(), budget: BudgetSchema,
 });
@@ -321,6 +322,7 @@ const DocumentInfoDataSchema = z.object({
 });
 const SearchDataSchema = z.object({
     query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']), results: z.array(SearchResultSchema),
+    granularity: z.literal('page').optional(),
     textCoverage: z.object({ unprocessedPages: z.number().int().nonnegative(), uncertainPages: z.number().int().nonnegative() }),
 });
 const StructuredPagesDataSchema = z.object({

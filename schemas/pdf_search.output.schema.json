@@ -229,6 +229,10 @@
                 "additionalProperties": false
               }
             },
+            "granularity": {
+              "type": "string",
+              "const": "page"
+            },
             "textCoverage": {
               "type": "object",
               "properties": {

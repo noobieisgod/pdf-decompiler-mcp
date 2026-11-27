@@ -105,6 +105,12 @@ test('open completion, cursor-only pages, and exact wire budgets follow the publ
     assert.equal(search.isError, undefined);
     assert.ok(search.structuredContent.budget.usage.responseBytes <= 12_000);
     assert.ok(search.structuredContent.budget.usage.estimatedTokens <= 3_000);
+    const pageSearch = await client.callTool({ name: 'pdf_search', arguments: { ...reference, query: 'Visible', granularity: 'page', budget: { pages: 1 } } });
+    assert.equal(pageSearch.structuredContent.data.granularity, 'page');
+    assert.equal(pageSearch.structuredContent.data.results.length, 1);
+    assert.ok(pageSearch.structuredContent.nextCursor);
+    const changedGranularity = await client.callTool({ name: 'pdf_search', arguments: { ...reference, query: 'Visible', budget: { pages: 1 }, cursor: pageSearch.structuredContent.nextCursor } });
+    assert.equal(changedGranularity.structuredContent.data.error.code, 'changed_cursor_arguments');
 
     const columns = await client.callTool({ name: 'pdf_open', arguments: { source: path.join(fixtureRoot, 'multi-column.pdf') } });
     const columnRef = { documentId: columns.structuredContent.documentId, extractionFingerprint: columns.structuredContent.extractionFingerprint };

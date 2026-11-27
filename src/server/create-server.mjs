@@ -208,7 +208,7 @@ export function createServer(manager) {
 
     server.registerTool('pdf_search', {
         title: 'Search decomposed PDF',
-        description: 'Search extracted elements with offline BM25, exact normalized phrase matching, optional semantic retrieval, or reciprocal-rank fused hybrid retrieval.',
+        description: 'Search extracted elements with offline BM25, exact normalized phrases, optional semantic retrieval, or hybrid retrieval. For full_text or phrase, use granularity page for one cited result per page.',
         inputSchema: SearchSchema,
         outputSchema: OutputSchemas.pdf_search,
         annotations: READ_ONLY,

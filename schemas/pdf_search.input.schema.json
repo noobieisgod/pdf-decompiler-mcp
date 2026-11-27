@@ -25,6 +25,14 @@
         "phrase"
       ]
     },
+    "granularity": {
+      "description": "Page results require full_text or phrase and return one cited match per page.",
+      "type": "string",
+      "enum": [
+        "element",
+        "page"
+      ]
+    },
     "pages": {
       "type": "array",
       "items": {

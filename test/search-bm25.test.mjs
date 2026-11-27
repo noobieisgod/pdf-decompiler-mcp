@@ -61,3 +61,22 @@ test('phrase search requires the normalized token sequence, including repeated w
     assert.match(hit.snippet, /Net net income rises\./);
     assert.throws(() => searchBm25(index, 'net '.repeat(65), { phrase: true }), { code: 'invalid_input' });
 });
+
+test('page search ranks repeated exact evidence and returns one cited match per page', () => {
+    const raw = rawDocument(2);
+    const block = (text, y) => ({ text, role: 'text', bbox: { x: 10, y, width: 160, height: 10 } });
+    raw.pages[0].tables = [];
+    raw.pages[1].tables = [];
+    raw.pages[0].textBlocks = [block('Net income', 10)];
+    raw.pages[1].textBlocks = [
+        block('Income improved after reporting', 10),
+        block('Net income increased', 40),
+        block('Net income by region', 80),
+    ];
+    const index = buildBm25(buildCanonicalModel(Buffer.from('%PDF-search-pages'), raw, config, 'deps'));
+    const hits = searchBm25(index, 'net income', { granularity: 'page' });
+    assert.deepEqual(hits.map(hit => hit.page), [2, 1]);
+    assert.match(hits[0].snippet, /Net income/);
+    assert.equal(hits[0].citation.pageId, 'page:2');
+    assert.deepEqual(searchBm25(index, 'net income', { granularity: 'page', pages: [1] }).map(hit => hit.page), [1]);
+});
