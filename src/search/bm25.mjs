@@ -74,23 +74,24 @@ export function searchBm25(index, query, options = {}) {
     const k1 = 1.2;
     const b = 0.75;
     const total = index.documents.length;
+    const averageLength = Math.max(1, index.averageLength);
+    const queryWeights = queryTokens.map(token => {
+        const df = Object.hasOwn(index.documentFrequency, token) ? index.documentFrequency[token] : 0;
+        return [token, Math.log(1 + ((total - df + 0.5) / (df + 0.5)))];
+    });
     const pageSet = options.pages ? new Set(options.pages) : null;
     const typeSet = options.elementTypes ? new Set(options.elementTypes) : null;
     const matches = [];
     for (const document of index.documents) {
         if (pageSet && !pageSet.has(document.page)) continue;
         if (typeSet && !typeSet.has(document.type)) continue;
-        const frequencies = new Map();
-        document.tokens.forEach(token => frequencies.set(token, (frequencies.get(token) || 0) + 1));
         let score = 0;
         const matchedTerms = [];
-        for (const token of queryTokens) {
-            const frequency = frequencies.get(token) || 0;
-            if (!frequency) continue;
+        for (const [token, idf] of queryWeights) {
+            if (!Object.hasOwn(document.positions, token)) continue;
+            const frequency = document.positions[token].length;
             matchedTerms.push(token);
-            const df = index.documentFrequency[token] || 0;
-            const idf = Math.log(1 + ((total - df + 0.5) / (df + 0.5)));
-            const denominator = frequency + k1 * (1 - b + b * document.tokens.length / Math.max(1, index.averageLength));
+            const denominator = frequency + k1 * (1 - b + b * document.tokens.length / averageLength);
             score += idf * ((frequency * (k1 + 1)) / denominator);
         }
         if (score > 0) {

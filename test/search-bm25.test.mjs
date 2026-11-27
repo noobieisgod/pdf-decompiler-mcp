@@ -25,6 +25,9 @@ test('BM25 indexes prototype-named tokens without object prototype collisions', 
     const index = buildBm25(constructorModel);
     assert.equal(index.version, 2);
     assert.ok(searchBm25(index, 'constructor')[0].snippet.includes('constructor'));
+    const persisted = JSON.parse(JSON.stringify(index));
+    assert.deepEqual(searchBm25(persisted, 'constructor prototype'), searchBm25(index, 'constructor prototype'));
+    assert.deepEqual(searchBm25(persisted, 'hasOwnProperty'), []);
 });
 
 test('BM25 snippets include neighboring values and adjacent hits are grouped without repeated page fragments', () => {
