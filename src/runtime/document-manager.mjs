@@ -154,8 +154,9 @@ export class DocumentManager {
         const key = stateKey(model.documentId, model.extractionFingerprint);
         const existing = this.states.get(key);
         if (existing) return existing;
-        if (!model.partial && !persisted) await this.cache.saveGeneration(model, pdfBytes, bm25, semantic);
-        const leaseId = !model.partial ? await this.cache.acquireLease(model.documentId, model.extractionFingerprint) : null;
+        const diskBacked = !model.partial && this.config.cache.mode !== 'none';
+        if (diskBacked && !persisted) await this.cache.saveGeneration(model, pdfBytes, bm25, semantic);
+        const leaseId = diskBacked ? await this.cache.acquireLease(model.documentId, model.extractionFingerprint) : null;
         const state = {
             model,
             pdfBytes,
@@ -169,7 +170,7 @@ export class DocumentManager {
             operationCount: 0,
             operationWaiters: [],
             closing: false,
-            persisted: persisted || !model.partial,
+            persisted: diskBacked,
             extractionConfig,
         };
         this.states.set(key, state);
@@ -339,7 +340,7 @@ export class DocumentManager {
             : null;
         const bm25 = buildBm25Safely(model, this.config.debug);
         const indexes = indexModel(model);
-        if (!model.partial && !state.persisted) {
+        if (!model.partial && !state.persisted && this.config.cache.mode !== 'none') {
             await this.cache.saveGeneration(model, state.pdfBytes, bm25);
             state.leaseId = await this.cache.acquireLease(model.documentId, model.extractionFingerprint);
             state.persisted = true;

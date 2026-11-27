@@ -34,6 +34,7 @@ test('paged Markdown appears once in structured content and complete resources a
     t.after(async () => { await client.close(); await server.close(); await manager.close(); });
     const opened = await client.callTool({ name: 'pdf_open', arguments: { source } });
     const reference = { documentId: opened.structuredContent.documentId, extractionFingerprint: opened.structuredContent.extractionFingerprint };
+    assert.equal(await manager.cache.generationExists(reference.documentId, reference.extractionFingerprint), false);
     const response = await client.callTool({ name: 'pdf_get_pages', arguments: { ...reference, pages: [1], outputFormat: 'markdown' } });
     assert.equal(response.structuredContent.data.outputFormat, 'markdown');
     assert.match(response.structuredContent.data.markdown, /MARKDOWN UNIQUE PAYLOAD/);
@@ -44,6 +45,12 @@ test('paged Markdown appears once in structured content and complete resources a
     const second = await client.readResource({ uri });
     assert.equal(first.contents[0].text, second.contents[0].text);
     assert.match(first.contents[0].text, /MARKDOWN UNIQUE PAYLOAD/);
+    const exportPath = manager.cache.markdownPaths(reference.documentId, reference.extractionFingerprint, uri.split('/').at(-2)).content;
+    await fs.access(exportPath);
+    const closed = await manager.closeDocument({ ...reference, sourceId: opened.structuredContent.data.sourceId, deleteCache: true });
+    assert.equal(closed.cacheDeleted, true);
+    await assert.rejects(fs.access(exportPath), { code: 'ENOENT' });
+    await assert.rejects(manager.readResource(uri), { code: 'deleted_generation' });
 });
 
 test('complete Markdown export fails instead of truncating beyond its hard configured size', async t => {

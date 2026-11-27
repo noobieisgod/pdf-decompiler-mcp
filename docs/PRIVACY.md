@@ -16,9 +16,9 @@ The loader discards full local paths and full source URLs after loading bytes. E
 |---|---|---|---|
 | `persistent` | Yes | Memory plus generation directory | Until that generation is deleted, evicted, corrupted, or administratively unavailable |
 | `ephemeral` | No | Memory plus an owner-restricted process directory | While the owning process and document state remain active |
-| `none` | No | Memory or an owner-restricted document working directory | Only for the active document lifetime in the owning process |
+| `none` | No | Memory for the active PDF and indexes. Requested full Markdown exports use an owner-restricted process directory | Only for the active document lifetime in the owning process |
 
-No-cache mode never writes document data into the persistent cache tree. Its state remains usable by `pdf_search`, `pdf_get_pages`, `pdf_get_element`, `pdf_render_page`, decomposition continuation, and `pdf_close`. Closing one document does not delete another document's state.
+No-cache mode removes its parser and renderer scratch files after each operation and keeps active PDF bytes, canonical data, and search indexes in memory. Its state remains usable by `pdf_search`, `pdf_get_pages`, `pdf_get_element`, `pdf_render_page`, decomposition continuation, and `pdf_close`. Closing one document does not delete another document's state.
 
 Process-local state is removed when its document closes, the server shuts down, or an unrecoverable failure invalidates it. On later startup, abandoned temporary directories older than 24 hours are removed only when their owner fingerprint matches, their recorded process is not alive, and their age is validated.
 

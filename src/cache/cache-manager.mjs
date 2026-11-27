@@ -273,7 +273,7 @@ export class CacheManager {
     }
 
     async saveDerivedMarkdown(documentId, generation, serializerFingerprint, sourcePath, metadata) {
-        if (!(await this.generationExists(documentId, generation))) throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
+        if (this.mode !== 'none' && !(await this.generationExists(documentId, generation))) throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
         const targets = this.markdownPaths(documentId, generation, serializerFingerprint);
         return this.withLock(documentId, `${generation}-markdown-${serializerFingerprint.slice(0, 16)}`, async () => {
             const existing = await this.loadDerivedMarkdown(documentId, generation, serializerFingerprint);
@@ -373,19 +373,21 @@ export class CacheManager {
     async deleteGeneration(documentId, generation, { ignoreMissing = false, reason = 'deleted' } = {}) {
         return this.withLock(documentId, generation, async () => {
             const target = this.generationPath(documentId, generation);
-            if (!(await exists(target))) {
+            const derived = path.join(this.root, 'derived', documentId, generation);
+            const hadGeneration = await exists(target);
+            if (!hadGeneration && !(this.mode === 'none' && await exists(derived))) {
                 if (ignoreMissing) {
                     await atomicJson(this.tombstonePath(documentId, generation), { reason, deletedAt: Date.now() });
                     return { deleted: false, verified: true };
                 }
                 throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
             }
-            if (await this.activeLeases(documentId, generation)) throw new PdfDecompilerError('CACHE_GENERATION_IN_USE', 'The extraction generation is actively leased.');
+            if (hadGeneration && await this.activeLeases(documentId, generation)) throw new PdfDecompilerError('CACHE_GENERATION_IN_USE', 'The extraction generation is actively leased.');
             await fs.rm(target, { recursive: true, force: true });
-            await fs.rm(path.join(this.root, 'derived', documentId, generation), { recursive: true, force: true });
+            await fs.rm(derived, { recursive: true, force: true });
             await fs.rm(path.dirname(this.semanticPath(documentId, generation)), { recursive: true, force: true });
             await atomicJson(this.tombstonePath(documentId, generation), { reason, deletedAt: Date.now() });
-            return { deleted: true, verified: !(await exists(target)) };
+            return { deleted: true, verified: !(await exists(target)) && !(await exists(derived)) };
         });
     }
 
@@ -434,11 +436,11 @@ export class CacheManager {
     status(model) {
         return {
             mode: this.mode,
-            location: this.generationPath(model.documentId, model.extractionFingerprint),
+            location: this.mode === 'none' ? 'process-local' : this.generationPath(model.documentId, model.extractionFingerprint),
             permissionStatus: this.permissionStatus,
             retentionDays: this.config.cache.retentionDays,
             maxBytes: this.config.cache.maxBytes,
-            stores: ['original_pdf', 'canonical_json', 'extracted_text', 'images', 'renders', 'markdown_exports', 'bm25_index', 'semantic_index', 'metadata', 'embeddings'],
+            stores: this.mode === 'none' ? ['markdown_exports'] : ['original_pdf', 'canonical_json', 'extracted_text', 'images', 'renders', 'markdown_exports', 'bm25_index', 'semantic_index', 'metadata', 'embeddings'],
             processLocal: this.mode !== 'persistent',
         };
     }
