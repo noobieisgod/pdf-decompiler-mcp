@@ -385,7 +385,8 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
     const keyPages = new Map();
     let timedOut = false;
     let nextPage = null;
-    for (let idx = 0; idx < pageNums.length; idx += PAGE_LOAD_CHUNK_SIZE) {
+    const canDetectRepeatingBands = pageNums.length >= HF_MIN_PAGES;
+    for (let idx = 0; canDetectRepeatingBands && idx < pageNums.length; idx += PAGE_LOAD_CHUNK_SIZE) {
         if (Date.now() - extractionStartMs > timeBudgetMs) {
             timedOut = true;
             nextPage = pageNums[idx] ?? null;
