@@ -45,7 +45,9 @@ try {
     await run(process.execPath, [mcpbCli, 'pack', stage, mcpbFile], { cwd: repository, timeout: 120_000 });
     await run(process.execPath, [mcpbCli, 'unpack', mcpbFile, unpacked], { cwd: repository, timeout: 120_000 });
     const unpackedFiles = (await fs.readdir(unpacked, { recursive: true })).map(file => file.replaceAll('\\', '/'));
-    for (const required of ['manifest.json', 'src/index.mjs', 'node_modules/@modelcontextprotocol/server/package.json', 'node_modules/mupdf/package.json']) {
+    for (const required of ['manifest.json', 'src/index.mjs', 'node_modules/@modelcontextprotocol/server/package.json',
+        'node_modules/mupdf/package.json', 'node_modules/pdfjs-dist/cmaps/Adobe-CNS1-UCS2.bcmap',
+        'node_modules/pdfjs-dist/cmaps/Adobe-Japan1-UCS2.bcmap', 'node_modules/pdfjs-dist/cmaps/LICENSE']) {
         if (!unpackedFiles.includes(required)) throw new Error(`MCPB is missing ${required}`);
     }
     const prohibitedMcpb = unpackedFiles.filter(file => /(?:^|\/)(?:test|scripts|\.git)(?:\/|$)|\.(?:pdf|zip|tgz)$/i.test(file));

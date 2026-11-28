@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Decode PDFs that depend on bundled Adobe character maps, including Chinese and Japanese composite fonts.
+
 - Store term positions and neighbor references once to reduce keyword index size and load time.
 
 - Load or build the keyword index on the first search so page-only reads skip the work.

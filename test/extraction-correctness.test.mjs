@@ -6,9 +6,16 @@ import { extractPageContent } from '../src/extract/document.mjs';
 import { anchorLinkAnnotations } from '../src/extract/links.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
-import { buildSyntheticPdf } from './fixtures/generate-fixtures.mjs';
+import { buildCjkPdf, buildSyntheticPdf } from './fixtures/generate-fixtures.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
+
+test('bundled character maps decode Chinese and Japanese composite-font text offline', async () => {
+    const result = await extractPageContent(buildCjkPdf(), undefined, 1200, { ocrPolicy: 'off' });
+    assert.match(result.pages[0].text, /先進製程與資訊安全/u);
+    assert.match(result.pages[1].text, /半導体輸出規制/u);
+    assert.ok(result.pages.every(page => page.textBlocks.some(block => block.bbox?.width > 0)));
+});
 
 test('reusing the header pass produces the same extraction as loading each page again', async () => {
     const bytes = buildSyntheticPdf({ pages: ['First body', 'Second body'], link: true });

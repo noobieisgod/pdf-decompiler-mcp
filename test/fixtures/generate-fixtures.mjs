@@ -77,6 +77,25 @@ export function buildSyntheticPdf({ pages = ['Synthetic PDF fixture'], rotate = 
     })));
 }
 
+export function buildCjkPdf() {
+    const objects = ['<< /Type /Catalog /Pages 2 0 R >>', ''];
+    const add = body => objects.push(body);
+    const pages = [];
+    for (const [font, encoding, ordering, text] of [
+        ['Fangti', 'UniCNS-UTF16-H', 'CNS1', '公司營運包括先進製程與資訊安全。'],
+        ['Gothic', 'UniJIS-UTF16-H', 'Japan1', '当社の半導体輸出規制と製造業の状況'],
+    ]) {
+        const descriptor = add(`<< /Type /FontDescriptor /FontName /${font} /FontBBox [-200 -200 1200 1200] /Flags 4 /ItalicAngle 0 /Ascent 1000 /Descent -200 /StemV 80 >>`);
+        const descendant = add(`<< /Type /Font /Subtype /CIDFontType0 /BaseFont /${font} /CIDSystemInfo << /Registry (Adobe) /Ordering (${ordering}) /Supplement 0 >> /FontDescriptor ${descriptor} 0 R >>`);
+        const fontId = add(`<< /Type /Font /Subtype /Type0 /BaseFont /${font} /Encoding /${encoding} /DescendantFonts [${descendant} 0 R] >>`);
+        const hex = Buffer.from(text, 'utf16le').swap16().toString('hex');
+        const content = add(streamObject(`BT /F1 16 Tf 72 720 Td <${hex}> Tj ET`));
+        pages.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${content} 0 R >>`));
+    }
+    objects[1] = `<< /Type /Pages /Kids [${pages.map(id => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+    return serializePdf(objects);
+}
+
 function tablePage({ bordered = true, merged = false } = {}) {
     const xs = [72, 240, 390];
     const ys = [680, 640, 600];

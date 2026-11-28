@@ -613,7 +613,7 @@
                 },
                 "extractionRevision": {
                   "type": "number",
-                  "const": 6
+                  "const": 7
                 },
                 "documentId": {
                   "type": "string",

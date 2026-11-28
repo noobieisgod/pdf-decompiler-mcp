@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 6;
+export const EXTRACTION_REVISION = 7;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
