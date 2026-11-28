@@ -39,7 +39,7 @@ test('persistent cache is atomic, generation immutable, corruption-aware, and le
     await Promise.all([first.saveGeneration(model, pdf, buildBm25(model)), second.saveGeneration(model, pdf, buildBm25(model))]);
     const loaded = await second.loadGeneration(model.documentId, model.extractionFingerprint);
     assert.equal(loaded.model.documentId, model.documentId);
-    assert.equal(loaded.model.assets[0].data, model.assets[0].data);
+    assert.equal(loaded.model.assets[0].data, undefined);
     const lease = await first.acquireLease(model.documentId, model.extractionFingerprint);
     await assert.rejects(second.deleteGeneration(model.documentId, model.extractionFingerprint), { code: 'CACHE_GENERATION_IN_USE' });
     first.config.cache.maxBytes = 1;
@@ -54,6 +54,23 @@ test('persistent cache is atomic, generation immutable, corruption-aware, and le
     await fs.writeFile(path.join(first.generationPath(model.documentId, model.extractionFingerprint), 'canonical.json'), '{}');
     assert.equal(await first.loadGeneration(model.documentId, model.extractionFingerprint), null);
     assert.equal(await first.unavailableReason(model.documentId, model.extractionFingerprint), 'corrupt');
+});
+
+test('cached figures keep their citation and verify image bytes on request', async t => {
+    const { config } = await temporaryConfig(t, { cacheMode: 'persistent' });
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const model = modelWithAsset();
+    const { documentId, extractionFingerprint } = model;
+    const [asset] = model.assets;
+    const root = await manager.cache.saveGeneration(model, Buffer.from('%PDF-cache'));
+    assert.deepEqual(await manager.readResource(asset.uri), { mimeType: asset.mimeType, blob: asset.data });
+    const restored = await manager.cache.loadGeneration(documentId, extractionFingerprint);
+    const [cachedAsset] = restored.model.assets;
+    await fs.writeFile(path.join(root, 'assets', cachedAsset.filename), 'damaged');
+    const state = await manager.requireState(documentId, extractionFingerprint);
+    assert.equal(state.indexes.assets.get(asset.id).uri, asset.uri);
+    await assert.rejects(manager.readResource(asset.uri), { code: 'missing_asset' });
 });
 
 test('process-local cache modes never use the configured persistent tree and remove only their own state', async t => {

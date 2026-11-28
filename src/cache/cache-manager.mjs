@@ -16,6 +16,11 @@ async function exists(target) {
     return fs.access(target).then(() => true, () => false);
 }
 
+function canonicalAssetFilename(asset) {
+    const extension = asset.mimeType === 'image/jpeg' ? 'jpg' : 'png';
+    return `${sha256(asset.id).slice(0, 24)}.${extension}`;
+}
+
 async function atomicJson(target, value, mode = 0o600) {
     await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
     const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
@@ -203,8 +208,7 @@ export class CacheManager {
             const persistedAssets = [];
             const assetHashes = {};
             for (const asset of model.assets) {
-                const extension = asset.mimeType === 'image/jpeg' ? 'jpg' : 'png';
-                const filename = asset.data ? `${sha256(asset.id).slice(0, 24)}.${extension}` : null;
+                const filename = asset.data ? canonicalAssetFilename(asset) : null;
                 if (filename) {
                     const bytes = Buffer.from(asset.data, 'base64');
                     await fs.writeFile(path.join(staging, 'assets', filename), bytes, { mode: 0o600 });
@@ -265,23 +269,19 @@ export class CacheManager {
         // A source open already hashed its input to obtain documentId.
         const pdfBytes = sourceBytes ?? await fs.readFile(path.join(root, 'source.pdf')).catch(() => null);
         if (!pdfBytes || (!sourceBytes && sha256(pdfBytes) !== pdfHash)) return corrupt();
-        for (const asset of model.assets) {
-            if (!asset.filename) {
-                asset.data = null;
-                continue;
-            }
-            const assetPath = path.join(root, 'assets', asset.filename);
-            const bytes = await fs.readFile(assetPath).catch(() => null);
-            const expected = manifest.files[`assets/${asset.filename}`];
-            if (!bytes || !expected || sha256(bytes) !== expected) return corrupt();
-            asset.data = bytes.toString('base64');
-        }
         manifest.lastAccessedAt = Date.now();
         await atomicJson(path.join(root, 'manifest.json'), manifest);
         const bm25 = loadBm25 ? await this.loadBm25Index(documentId, generation) : null;
         const semantic = await fs.readFile(this.semanticPath(documentId, generation), 'utf8').then(JSON.parse, () =>
             fs.readFile(path.join(root, 'semantic.json'), 'utf8').then(JSON.parse, () => null));
         return { model, pdfBytes, bm25, semantic };
+    }
+
+    async loadCanonicalAsset(documentId, generation, asset) {
+        const filename = canonicalAssetFilename(asset);
+        if (asset.documentId !== documentId || asset.extractionFingerprint !== generation || asset.filename !== filename || !asset.sha256) return null;
+        const bytes = await fs.readFile(path.join(this.generationPath(documentId, generation), 'assets', filename)).catch(() => null);
+        return bytes && sha256(bytes) === asset.sha256 ? bytes.toString('base64') : null;
     }
 
     async saveDerivedMarkdown(documentId, generation, serializerFingerprint, sourcePath, metadata) {

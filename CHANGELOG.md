@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Restore cached documents without decoding figures. Read and verify each image when its resource is requested.
 - Reuse verified PDF bytes on cache hits and verify cached source files before serving them after a restart.
 - Recover faint ruled tables and retry uncertain OCR within the table crop, including on skewed scans.
 - Reconstruct borderless numeric tables from scans and retain cell citations for signed and decimal values.

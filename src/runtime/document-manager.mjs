@@ -877,6 +877,11 @@ export class DocumentManager {
             }
             if (kind === 'canonical') return { mimeType: 'application/json', text: JSON.stringify(modelView(state.model), null, 2) };
             let asset = state.derivedAssets.get(id) || state.indexes.assets.get(id);
+            if (asset?.filename && !asset.data) {
+                const blob = await this.cache.loadCanonicalAsset(documentId, generation, asset);
+                if (!blob) throw new PdfDecompilerError('missing_asset', 'The requested asset is unavailable.');
+                return { mimeType: asset.mimeType, blob };
+            }
             if ((!asset || !asset.data) && this.config.cache.mode === 'persistent') asset = await this.cache.loadDerivedAsset(documentId, generation, id) || asset;
             if (asset?.deferredRender && !asset.data) {
                 const rendered = await runRenderSubprocess(state.pdfBytes, this.config, asset.deferredRender);
