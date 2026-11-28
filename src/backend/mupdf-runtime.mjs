@@ -1,5 +1,5 @@
 import mupdf from 'mupdf';
-import { createCanvas } from '../pdf/pdfjs-runtime.mjs';
+import { createCanvas } from '../pdf/canvas.mjs';
 
 function rgbPixmapToCanvas(pixmap) {
     if (!createCanvas) {

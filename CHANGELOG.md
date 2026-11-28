@@ -4,6 +4,8 @@
 
 - Recover tagged table cells in semantic row and column order, including cells nested in untagged marked content.
 - Keep PDF workers inside the Linux memory cap by reducing native allocator reservations and releasing unused page rasters.
+- Pass PDF bytes directly to the isolated extraction worker, avoiding a temporary copy of the source.
+- Start page rendering without loading PDF.js when MuPDF handles the image.
 
 ## 3.1.1
 

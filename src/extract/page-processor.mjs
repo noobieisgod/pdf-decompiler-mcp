@@ -1,6 +1,7 @@
 import { AUTO_OCR_MAX_REGIONS_PER_PAGE, OCR_MAX_NATIVE_WORDS, OCR_MIN_IMAGE_COVERAGE, ROUTE_TEXT_DENSITY, HF_MAX_WORDS } from '../config/constants.mjs';
 import { hfSignature } from './headers-footers.mjs';
-import { classifyRenderFailure, cropPlacementFromCanvas, encodePageImage, isKnownRenderEnvironmentError, renderPageImages, renderPageCanvas, scaleCanvas, getImagePlacements } from './images.mjs';
+import { classifyRenderFailure, cropPlacementFromCanvas, encodePageImage, isKnownRenderEnvironmentError, renderPageImages, renderPageCanvas, getImagePlacements } from './images.mjs';
+import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
 import { detectTesseract, runTesseractOcr } from './ocr.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';

@@ -1,6 +1,6 @@
 import { getDocMetadata, getDocOutline, loadPageData } from '../pdf/page-data.mjs';
+import { createCanvas } from '../pdf/canvas.mjs';
 import {
-    createCanvas,
     getDocument,
     LocalStandardFontDataFactory,
     NodeCanvasFactory,

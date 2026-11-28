@@ -2,43 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-let createCanvas = null;
-try {
-    const canvasModule = await import('@napi-rs/canvas');
-    createCanvas = canvasModule.createCanvas ?? canvasModule.default?.createCanvas ?? null;
-    if (canvasModule.DOMMatrix) {
-        globalThis.DOMMatrix = canvasModule.DOMMatrix;
-    }
-    if (canvasModule.Path2D) {
-        globalThis.Path2D = canvasModule.Path2D;
-    }
-    if (canvasModule.ImageData) {
-        globalThis.ImageData = canvasModule.ImageData;
-    }
-    if (canvasModule.Image) {
-        globalThis.Image = canvasModule.Image;
-    }
-    globalThis.createImageBitmap = async function createImageBitmapCompat(source) {
-        const width = source?.width ?? source?.naturalWidth ?? 1;
-        const height = source?.height ?? source?.naturalHeight ?? 1;
-        const canvas = createCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        try {
-            if (source instanceof globalThis.ImageData) {
-                ctx.putImageData(source, 0, 0);
-            } else {
-                const raw = source?.data ?? source?.rgba;
-                if (raw && raw.length > 0) {
-                    const bytes = raw instanceof Uint8ClampedArray ? raw : new Uint8ClampedArray(raw.buffer ?? raw);
-                    ctx.putImageData(new globalThis.ImageData(bytes, width, height), 0, 0);
-                }
-            }
-        } catch {
-        }
-        return canvas;
-    };
-} catch {
-}
+import { createCanvas } from './canvas.mjs';
 
 if (typeof globalThis.DOMMatrix === 'undefined') {
     await import('../../pdfjs-polyfill.mjs');
@@ -64,14 +28,10 @@ export class LocalStandardFontDataFactory {
     }
 }
 
-export function patchCanvasContext(ctx) {
-    return ctx;
-}
-
 export class NodeCanvasFactory {
     create(width, height) {
         const canvas = createCanvas(width, height);
-        const context = patchCanvasContext(canvas.getContext('2d'));
+        const context = canvas.getContext('2d');
         return { canvas, context };
     }
 
@@ -88,7 +48,6 @@ export class NodeCanvasFactory {
 
 export {
     AnnotationMode,
-    createCanvas,
     getDocument,
     OPS,
     VerbosityLevel,

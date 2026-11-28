@@ -58,20 +58,19 @@ async function linuxPrlimitAvailable() {
     return process.platform === 'linux' && fs.access('/usr/bin/prlimit').then(() => true, () => false);
 }
 
-function workerSpawnOptions(usePrlimit) {
+function workerSpawnOptions(usePrlimit, stdin = 'ignore') {
     // Keep glibc allocator arenas from using up the bounded virtual address space.
     const env = usePrlimit ? { MALLOC_ARENA_MAX: '1', ...process.env } : process.env;
-    return { env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true };
+    return { env, stdio: [stdin, 'ignore', 'pipe'], windowsHide: true };
 }
 
 export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     const work = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf-decompiler-extract-'));
     await fs.chmod(work, 0o700).catch(() => {});
-    const input = path.join(work, 'source.pdf');
     const output = path.join(work, 'result.json');
-    await fs.writeFile(input, pdfBytes, { mode: 0o600 });
     const worker = fileURLToPath(new URL('./extract-worker.mjs', import.meta.url));
     const workerOptions = JSON.stringify({
+        inputBytes: pdfBytes.length,
         pages: options.pages,
         maxImageDim: Math.min(options.maxImageDim || 1200, 4096),
         maxPages: config.maxPages,
@@ -82,8 +81,8 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     const usePrlimit = await linuxPrlimitAvailable();
     const command = usePrlimit ? '/usr/bin/prlimit' : process.execPath;
     const args = usePrlimit
-        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, input, output, workerOptions]
-        : [worker, input, output, workerOptions];
+        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, output, workerOptions]
+        : [worker, output, workerOptions];
     const enforcement = {
         wallClock: 'hard-runtime-termination',
         documentSize: 'hard-pre-enforced',
@@ -100,8 +99,12 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     let monitor;
     let monitoring = false;
     try {
-        child = spawn(command, args, workerSpawnOptions(usePrlimit));
+        child = spawn(command, args, workerSpawnOptions(usePrlimit, 'pipe'));
         child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-16_384); });
+        child.stdin.on('error', error => {
+            if (error.code !== 'EPIPE') child.kill();
+        });
+        child.stdin.end(pdfBytes);
         timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, config.extractionTimeoutMs);
         monitor = setInterval(async () => {
             if (monitoring) return;

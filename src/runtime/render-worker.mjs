@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises';
-import { createCanvas } from '../pdf/pdfjs-runtime.mjs';
+import { createCanvas, scaleCanvas } from '../pdf/canvas.mjs';
 import { openMupdfDocument, renderMupdfPageToCanvas } from '../backend/mupdf-runtime.mjs';
-import { scaleCanvas } from '../extract/images.mjs';
 
 const [inputPath, outputPath, optionsJson] = process.argv.slice(2);
 

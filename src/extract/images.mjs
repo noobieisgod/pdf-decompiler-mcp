@@ -7,13 +7,8 @@ import {
     MIN_VISIBLE_PIXEL_RATIO,
     debugRender,
 } from '../config/constants.mjs';
-import {
-    AnnotationMode,
-    createCanvas,
-    NodeCanvasFactory,
-    OPS,
-    patchCanvasContext,
-} from '../pdf/pdfjs-runtime.mjs';
+import { AnnotationMode, NodeCanvasFactory, OPS } from '../pdf/pdfjs-runtime.mjs';
+import { createCanvas, fillCanvasWhite, scaleCanvas } from '../pdf/canvas.mjs';
 import { bboxFromPoints, multiplyTransform, normalizeBBox, transformPoint, transformUnitRect, unionBBoxes } from '../model/geometry.mjs';
 
 const KNOWN_RENDER_ENVIRONMENT_PATTERNS = [
@@ -41,29 +36,6 @@ export function classifyRenderFailure(err) {
         message,
         userMessage: 'Image rendering failed',
     };
-}
-
-function fillCanvasWhite(canvas) {
-    const ctx = patchCanvasContext(canvas.getContext('2d'));
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    return ctx;
-}
-
-export function scaleCanvas(canvas, maxImageDim) {
-    if (!maxImageDim || Math.max(canvas.width, canvas.height) <= maxImageDim) {
-        return canvas;
-    }
-    const scale = maxImageDim / Math.max(canvas.width, canvas.height);
-    const width = Math.max(1, Math.round(canvas.width * scale));
-    const height = Math.max(1, Math.round(canvas.height * scale));
-    const scaled = createCanvas(width, height);
-    fillCanvasWhite(scaled);
-    scaled.getContext('2d').drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
-    return scaled;
 }
 
 const JPEG_ENCODE_OPTIONS = { quality: JPEG_OUTPUT_QUALITY };

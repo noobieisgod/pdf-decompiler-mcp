@@ -60,12 +60,10 @@ test('parent worker-result handling contains missing, malformed, and unknown fai
 test('worker writes one structured failure and keeps stdout clean', async t => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf-worker-process-test-'));
     t.after(() => fs.rm(root, { recursive: true, force: true }));
-    const input = path.join(root, 'source.pdf');
     const output = path.join(root, 'result.json');
-    await fs.writeFile(input, '%PDF-1.7\ninvalid');
     const worker = fileURLToPath(new URL('../src/runtime/extract-worker.mjs', import.meta.url));
     const result = await new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [worker, input, output, '{invalid-json'], { windowsHide: true });
+        const child = spawn(process.execPath, [worker, output, '{invalid-json'], { windowsHide: true });
         const stdout = [];
         const stderr = [];
         child.stdout.on('data', value => stdout.push(value));
