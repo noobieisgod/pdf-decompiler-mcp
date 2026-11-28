@@ -11,16 +11,28 @@ import { temporaryConfig } from './helpers.mjs';
 const TOOL_NAMES = ['pdf_open', 'pdf_document_info', 'pdf_search', 'pdf_get_pages', 'pdf_get_element', 'pdf_render_page', 'pdf_close'];
 
 async function connected(t) {
-    const { root, config } = await temporaryConfig(t, { cacheMode: 'persistent' });
+    const { root, config } = await temporaryConfig(null, { cacheMode: 'persistent' });
+    let manager;
+    let server;
+    let client;
+    t.after(async () => {
+        try {
+            await client?.close();
+            await server?.close();
+            await manager?.close();
+        } finally {
+            await fs.rm(root, { recursive: true, force: true });
+        }
+    });
     const source = path.join(root, 'workflow.pdf');
     await fs.writeFile(source, buildSyntheticPdf({ pages: ['Composable MCP workflow evidence'], link: true }));
-    const manager = await new DocumentManager(config).init();
-    const server = createServer(manager);
+    manager = new DocumentManager(config);
+    await manager.init();
+    server = createServer(manager);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
-    const client = new Client({ name: 'pdf-decompiler-tests', version: '1.0.0' });
+    client = new Client({ name: 'pdf-decompiler-tests', version: '1.0.0' });
     await client.connect(clientTransport);
-    t.after(async () => { await client.close(); await server.close(); await manager.close(); });
     return { client, source };
 }
 
