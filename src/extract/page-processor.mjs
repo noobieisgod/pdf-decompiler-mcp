@@ -63,7 +63,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     let ocrAttempted = false;
     let ocrAccepted = false;
     let ocrReason = null;
-    let ocrSpreadBoundary = null;
+    let spreadBoundary = null;
     const ocrRegions = { attempted: 0, accepted: 0, rejected: 0 };
     const ocrDiagnostics = [];
     let cachedFullCanvas = null;
@@ -137,7 +137,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     ocrRegions.accepted += 1;
                     ocrDiagnostics.push(...(ocrResult.diagnostics || []));
                     pageText = ocrResult.text;
-                    ocrSpreadBoundary = ocrResult.spreadBoundary ?? null;
+                    spreadBoundary = ocrResult.spreadBoundary ?? null;
                     rawTextBlocks = ocrResult.blocks || [];
                     rawTables = ocrResult.tables || [];
                 } else {
@@ -249,7 +249,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         } else {
             const equationItems = new Set(bodyItems.filter(({ bbox }) => bbox && fractions.some(box =>
                 bbox.x >= box.x && bbox.x + bbox.width <= box.x + box.width && bbox.y >= box.y && bbox.y + bbox.height <= box.y + box.height)));
-            ({ tables, nonTableItems } = detectTables(equationItems.size ? bodyItems.filter(item => !equationItems.has(item)) : bodyItems, viewport));
+            ({ tables, nonTableItems, spreadBoundary } = detectTables(equationItems.size ? bodyItems.filter(item => !equationItems.has(item)) : bodyItems, viewport));
             if (equationItems.size) {
                 const remaining = new Set(nonTableItems);
                 nonTableItems = bodyItems.filter(item => equationItems.has(item) || remaining.has(item));
@@ -257,7 +257,15 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         }
         const normalizedTables = tables.map(table => ({ ...table, rows: normalizeTableRows(table.rows) }));
         if (contentClass === 'table' && normalizedTables.length === 0) contentClass = pageProfile.dominantRole === 'list' ? 'structured_text' : 'text';
-        const nativeLayout = buildTextBlocks(nonTableItems, viewport);
+        let nativeLayout;
+        if (spreadBoundary) {
+            const positive = nonTableItems.filter(item => item.str.trim());
+            const left = buildTextBlocks(positive.filter(item => item.x + item.w / 2 < spreadBoundary), viewport);
+            const right = buildTextBlocks(positive.filter(item => item.x + item.w / 2 >= spreadBoundary), viewport);
+            nativeLayout = { blocks: [...left.blocks, ...right.blocks], warnings: [...left.warnings, ...right.warnings] };
+        } else {
+            nativeLayout = buildTextBlocks(nonTableItems, viewport);
+        }
         rawTextBlocks = nativeLayout.blocks;
         extractionWarnings.push(...nativeLayout.warnings);
         const imagePlans = new Map();
@@ -404,6 +412,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
             tableIds.set(idx, `TBL_LOCAL_${localTableIdx++}`);
             rawTables.push({
                 rows: normalizedTables[idx].rows,
+                headerRows: normalizedTables[idx].headerRows,
                 cells: normalizedTables[idx].cells || null,
                 bbox: normalizedTables[idx].bbox || {
                     x: 0,
@@ -439,7 +448,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         ocrReason,
         ocrRegions,
         ocrDiagnostics: ocrDiagnostics.slice(0, 32),
-        ocrSpreadBoundary,
+        spreadBoundary,
         text: pageText,
         textBlocks: rawTextBlocks,
         annotations,

@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 20;
+export const EXTRACTION_REVISION = 21;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -80,10 +80,10 @@ function insertionHint(blocks, bbox, sourceIndex = 0) {
     return (index < 0 ? blocks.length : index) * 1000 + 500 + sourceIndex;
 }
 
-function spreadTableHint(blocks, bbox, boundary, sourceIndex) {
-    if (!bbox || !boundary) return insertionHint(blocks, bbox, sourceIndex);
+function tableInsertionHint(blocks, bbox, boundary, sourceIndex) {
+    if (!bbox) return insertionHint(blocks, bbox, sourceIndex);
     const left = bbox.x + bbox.width / 2 < boundary;
-    const sameSide = block => block.bbox && (block.bbox.x + block.bbox.width / 2 < boundary) === left;
+    const sameSide = block => block.bbox && (!boundary || (block.bbox.x + block.bbox.width / 2 < boundary) === left);
     const next = blocks.findIndex(block => sameSide(block) && block.bbox.y > bbox.y);
     if (next >= 0) return next * 1000 - 500 + sourceIndex;
     const last = blocks.findLastIndex(sameSide);
@@ -243,7 +243,7 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
                 citation: citation(documentId, generation, rawPage.page, id, tableBbox),
                 ...elementFingerprints('table', rawPage.page, tableBbox, rows),
             };
-            addElement(pageElements, record, spreadTableHint(canonicalBlocks, tableBbox, rawPage.ocrSpreadBoundary, index));
+            addElement(pageElements, record, tableInsertionHint(canonicalBlocks, tableBbox, rawPage.spreadBoundary, index));
         });
 
         const imageRecords = [...(rawPage.images || [])];

@@ -97,6 +97,18 @@ export function buildVectorChartPdf() {
     }]);
 }
 
+export function buildRightAlignedTablePdf(rows) {
+    const texts = [{ x: 36, y: 752, text: 'Power reserves', size: 17 }];
+    rows.forEach((row, index) => row.forEach((text, column) => {
+        const right = [0, 288, 392, 515][column];
+        const glyphUnits = [...text].reduce((sum, char) => sum + (char === '.' || char === ',' ? 2.78 : char === '-' ? 3.33 : char === '%' ? 8.89 : 5.56), 0);
+        const x = index && column ? right - glyphUnits : [44, 168, 310, 414][column];
+        texts.push({ x, y: 690 - index * 25, size: 10, text });
+    }));
+    texts.push({ x: 36, y: 505, text: 'The auditor reviewed this ledger.' });
+    return buildFixturePdf([{ texts }]);
+}
+
 export function buildCjkPdf({ vertical = false } = {}) {
     const objects = ['<< /Type /Catalog /Pages 2 0 R >>', ''];
     const add = body => objects.push(body);

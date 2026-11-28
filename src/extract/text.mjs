@@ -176,7 +176,20 @@ function orderBlocks(blocks, viewport, regionX = 0, allowSectionBands = true, al
     const before = columnSort(spanning.filter(block => block.bbox.y + block.bbox.height <= firstColumnY));
     const after = columnSort(spanning.filter(block => block.bbox.y >= lastColumnY));
     const middle = columnSort(spanning.filter(block => !before.includes(block) && !after.includes(block)));
-    return { blocks: attachMarginNumbers([...before, ...columnSort(left), ...columnSort(right), ...middle, ...after], regionX, width), warnings: middle.length ? [{ code: 'layout_ambiguous' }] : [] };
+    const orderedLeft = columnSort(left);
+    const orderedRight = columnSort(right);
+    for (const [column, other] of [[orderedLeft, orderedRight], [orderedRight, orderedLeft]]) {
+        const end = other.at(-1).bbox;
+        const bottom = end.y + end.height;
+        const index = column.findIndex(block => block.bbox.y >= bottom + 36);
+        if (index < MIN_COLUMN_GUTTER_LINE_COUNT) continue;
+        const previous = column[index - 1].bbox;
+        const previousBottom = previous.y + previous.height;
+        if (Math.abs(previousBottom - bottom) <= 18 && column[index].bbox.y - previousBottom >= 36) {
+            after.push(...column.splice(index));
+        }
+    }
+    return { blocks: attachMarginNumbers([...before, ...orderedLeft, ...orderedRight, ...middle, ...columnSort(after)], regionX, width), warnings: middle.length ? [{ code: 'layout_ambiguous' }] : [] };
 }
 
 function verticalTextBlocks(items, viewport) {

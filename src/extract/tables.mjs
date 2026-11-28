@@ -194,8 +194,8 @@ export function extractStructTables(structTree, mcidMap) {
 
 export function detectTables(items, viewport = null, allowSpreadPartition = true) {
     if (items.some(item => item.vertical)) {
-        const { tables, nonTableItems } = detectTables(items.filter(item => !item.vertical), viewport, allowSpreadPartition);
-        return { tables, nonTableItems: [...nonTableItems, ...items.filter(item => item.vertical)] };
+        const result = detectTables(items.filter(item => !item.vertical), viewport, allowSpreadPartition);
+        return { ...result, nonTableItems: [...result.nonTableItems, ...items.filter(item => item.vertical)] };
     }
     if (items.length === 0) {
         return { tables: [], nonTableItems: [] };
@@ -207,7 +207,7 @@ export function detectTables(items, viewport = null, allowSpreadPartition = true
         const left = detectTables(leftItems, viewport, false);
         const right = detectTables(rightItems, viewport, false);
         if (left.tables.length && right.tables.length) {
-            return { tables: [...left.tables, ...right.tables], nonTableItems: [...left.nonTableItems, ...right.nonTableItems] };
+            return { tables: [...left.tables, ...right.tables], nonTableItems: [...left.nonTableItems, ...right.nonTableItems], spreadBoundary: middle };
         }
     }
     const rowInfos = groupItemsIntoRows(items).map(buildRowInfo).filter(row => row.items.length > 0);
@@ -219,6 +219,12 @@ export function detectTables(items, viewport = null, allowSpreadPartition = true
     let rowIndex = 0;
     while (rowIndex < rowInfos.length) {
         const start = rowInfos[rowIndex];
+        const numericTable = readRightAlignedTable(rowInfos, rowIndex, viewport);
+        if (numericTable) {
+            tables.push(numericTable.table);
+            rowIndex = numericTable.end;
+            continue;
+        }
         if (start.anchors.length < TABLE_MIN_COLS) {
             nonTableItems.push(...start.items);
             rowIndex += 1;
@@ -288,6 +294,36 @@ export function detectTables(items, viewport = null, allowSpreadPartition = true
         tables,
         nonTableItems,
     };
+}
+
+const NATIVE_NUMBER = /^(?:[+−-]?[(]?\p{Sc}?(?:\p{Nd}+(?:[.,]\p{Nd}+)*|[.,]\p{Nd}+)(?:[%‰]|[)])?|[—–-])$/u;
+const RIGHT_EDGE_TOLERANCE = 3;
+
+function readRightAlignedTable(rows, start, viewport) {
+    const header = rows[start].items;
+    const first = rows[start + 1];
+    if (header.length < 3 || !first || first.items.length !== header.length || !header.some(item => /\p{L}/u.test(item.str))) return null;
+    const body = first.items;
+    const right = item => item.x + item.w;
+    if (Math.abs(header[0].x - body[0].x) > RIGHT_EDGE_TOLERANCE) return null;
+    if (header.slice(1).some((item, index) => item.x <= right(body[index]) || item.x > right(body[index + 1]) + RIGHT_EDGE_TOLERANCE)) return null;
+    const headerGap = first.yTop - rows[start].yTop;
+    if (headerGap < 5 || headerGap > 55) return null;
+    const grid = [rows[start]];
+    let end = start + 1;
+    for (; end < rows.length; end++) {
+        const row = rows[end];
+        const gap = row.yTop - rows[end - 1].yTop;
+        if (gap < headerGap * 0.55 || gap > headerGap * 1.6 || row.items.length !== body.length) break;
+        if (!/\p{L}/u.test(row.items[0].str) || Math.abs(body[0].x - row.items[0].x) > RIGHT_EDGE_TOLERANCE) break;
+        if (row.items.slice(1).some((item, index) => !NATIVE_NUMBER.test(item.str) || Math.abs(right(item) - right(body[index + 1])) > RIGHT_EDGE_TOLERANCE
+            || item.x - right(row.items[index]) < 7)) break;
+        grid.push(row);
+    }
+    if (grid.length < 4) return null;
+    const cells = grid.map(row => row.items.map(item => ({ text: item.str, bbox: item.bbox })));
+    return { end, table: { rows: cells.map(row => row.map(cell => cell.text)), cells, headerRows: 1,
+        bbox: unionBBoxes(cells.flat().map(cell => cell.bbox), viewport?.width, viewport?.height), yTop: rows[start].yTop, yBottom: grid.at(-1).yBottom } };
 }
 
 export function pageLooksBlank(profile) {

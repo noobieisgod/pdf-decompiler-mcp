@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Restore native table headers and preserve the order of adjacent tables and trailing notes.
 - Add cited, on-demand crops for detected vector charts and fractions in fidelity reads.
 - Keep split OCR numbers in their financial table cells and warn about ambiguous spacing.
 - Read both sides of scanned spreads separately and recover aligned financial rows with cell citations.

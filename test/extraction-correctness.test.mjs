@@ -7,7 +7,7 @@ import { extractPageContent } from '../src/extract/document.mjs';
 import { anchorLinkAnnotations } from '../src/extract/links.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { FigureElementSchema, LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
-import { buildCjkPdf, buildSyntheticPdf, buildVectorChartPdf } from './fixtures/generate-fixtures.mjs';
+import { buildCjkPdf, buildRightAlignedTablePdf, buildSyntheticPdf, buildVectorChartPdf } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
@@ -267,6 +267,25 @@ test('independently positioned columns retain column-major deterministic order',
     const second = await modelFor(manager, 'multi-column.pdf');
     assert.deepEqual(second.model.elements.map(element => element.id), firstOrder);
     await manager.closeDocument(second.opened);
+});
+
+test('native numeric columns follow their aligned edges and retain detached headers', async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'off' });
+    const source = path.join(root, 'power-reserves.pdf');
+    const expected = [['Territory', 'Allocation', 'Available', 'Balance'],
+        ['South', '18,763,272.5', '13.25', '-76.5%'], ['East', '831.2', '4,370,894.25', '16.3%'],
+        ['North', '16,772.8', '837.6', '-1.4%'], ['West', '4.7', '2,217.72', '0.1%']];
+    await fs.writeFile(source, buildRightAlignedTablePdf(expected));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+    const [table] = elements.filter(element => element.type === 'table');
+    assert.deepEqual(table.rows, expected);
+    assert.ok(table.cells.every(cell => cell.bbox?.width > 0));
+    assert.ok(table.readingOrder < elements.find(element => element.text?.includes('auditor')).readingOrder);
+    const [hit] = (await manager.search({ ...opened, query: '18,763,272.5', strategy: 'phrase' })).results;
+    assert.deepEqual(hit.citation.bbox, table.cells.find(cell => cell.text === expected[1][1]).bbox);
 });
 
 test('semantic headings, nested lists, ordered starts, and code blocks survive real extraction into Markdown', async t => {
