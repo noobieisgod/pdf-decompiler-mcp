@@ -26,10 +26,6 @@ function stateKey(documentId, generation) {
     return `${documentId}:${generation}`;
 }
 
-function sortElements(elements) {
-    return [...elements].sort((a, b) => a.page - b.page || a.readingOrder - b.readingOrder || a.id.localeCompare(b.id));
-}
-
 function completeDocument(model) {
     return model.processedPages === model.totalPages && !model.partial;
 }
@@ -602,8 +598,6 @@ export class DocumentManager {
         const requestedPages = normalizePageOrder(pageInput, args.pageRanges, state.model.totalPages, state.model.pages.map(page => page.number));
         if (requestedPages.length > HARD_BUDGET.pages) throw new PdfDecompilerError('budget_exhausted', 'The requested page scope exceeds the hard page limit.');
         const requested = new Set(requestedPages);
-        const scoped = sortElements(state.model.elements.filter(element => requested.has(element.page)));
-        let elements = scoped;
         const mode = args.mode || restoredArguments?.mode || 'balanced';
         const outputFormat = args.outputFormat || restoredArguments?.outputFormat || 'structured';
         const tableDetail = args.tableDetail || restoredArguments?.tableDetail || (outputFormat === 'markdown' ? 'compact' : 'full');
@@ -611,17 +605,6 @@ export class DocumentManager {
         if (compactCitations && outputFormat !== 'markdown') throw new PdfDecompilerError('invalid_input', 'Compact citations require Markdown output.');
         const includeElementTypes = args.includeElementTypes || restoredArguments?.includeElementTypes;
         const excludeElementTypes = args.excludeElementTypes || restoredArguments?.excludeElementTypes;
-        if (mode === 'text') elements = elements.filter(element => element.type !== 'figure');
-        if (mode === 'balanced') elements = elements.filter(element => element.type !== 'figure' || element.caption);
-        if (includeElementTypes?.length) {
-            const include = new Set(includeElementTypes);
-            const selectedIds = new Set(elements.map(element => element.id));
-            elements = sortElements([...elements, ...scoped.filter(element => include.has(element.type) && !selectedIds.has(element.id))]);
-        }
-        if (excludeElementTypes?.length) {
-            const exclude = new Set(excludeElementTypes);
-            elements = elements.filter(element => !exclude.has(element.type));
-        }
         const requestedBudget = args.budget || restoredArguments?.requestedBudget;
         const resolvedBudget = resolveBudget(requestedBudget);
         const cursorArguments = {
@@ -642,7 +625,15 @@ export class DocumentManager {
         };
         if (restoredArguments && fingerprint(restoredArguments) !== fingerprint(cursorArguments)) throw new PdfDecompilerError('changed_cursor_arguments', 'The cursor arguments have changed.');
         const position = restored?.position || { offsets: requestedPages.map(() => 0), pageIndex: 0 };
-        const pageItems = requestedPages.map(page => ({ page, items: elements.filter(element => element.page === page) }));
+        const include = new Set(includeElementTypes);
+        const exclude = new Set(excludeElementTypes);
+        const pageItems = requestedPages.map(page => {
+            const ids = state.indexes.pages.get(page)?.elementIds ?? [];
+            const items = ids.map(id => state.indexes.elements.get(id)).filter(element => element
+                && !exclude.has(element.type) && (element.type !== 'figure' || include.has('figure')
+                    || mode === 'fidelity' || (mode === 'balanced' && element.caption)));
+            return { page, items };
+        });
         const wireResponseBytes = Math.min(resolvedBudget.responseBytes, args._wireResponseBytes ?? resolvedBudget.responseBytes);
         const preCapBudget = {
             ...resolvedBudget,

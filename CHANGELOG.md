@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Use the page index for selected-page reads and continuations.
+
 - Read native vertical Japanese columns from right to left and cite their visible page regions.
 
 - Search across two to eight open PDFs in one call, with ranked matches and exact document and page citations.
