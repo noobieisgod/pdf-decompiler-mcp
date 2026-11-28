@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.1.1
 
+- Fix PDF extraction when npm hoists dependencies or optional native canvas packages are omitted.
 - Add selected pages to an active PDF without loading the source again or opening another handle.
 - Use explicit WebAssembly bounds checks in memory-limited Linux workers so MuPDF can start within the address-space limit.
 

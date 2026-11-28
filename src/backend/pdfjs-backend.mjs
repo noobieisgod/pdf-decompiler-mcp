@@ -1,21 +1,19 @@
-import { fileURLToPath } from 'node:url';
 import { getDocMetadata, getDocOutline, loadPageData } from '../pdf/page-data.mjs';
 import {
     createCanvas,
     getDocument,
     LocalStandardFontDataFactory,
     NodeCanvasFactory,
+    PDFJS_CMAP_DIRECTORY,
     VerbosityLevel,
 } from '../pdf/pdfjs-runtime.mjs';
-
-const CMAP_DIRECTORY = `${fileURLToPath(new URL('../../node_modules/pdfjs-dist/cmaps', import.meta.url))}/`;
 
 export async function openPdfjsDocumentBackend(pdfBytes) {
     const uint8 = new Uint8Array(pdfBytes);
     const pdfjsDoc = await getDocument({
         data: uint8,
         StandardFontDataFactory: LocalStandardFontDataFactory,
-        cMapUrl: CMAP_DIRECTORY,
+        cMapUrl: PDFJS_CMAP_DIRECTORY,
         canvasFactory: createCanvas ? new NodeCanvasFactory() : undefined,
         disableWorker: true,
         enableXfa: false,

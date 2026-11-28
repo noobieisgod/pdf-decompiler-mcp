@@ -1,6 +1,6 @@
 {
     "name": "pdf-decompiler-mcp",
-    "version": "3.1.0",
+    "version": "3.1.1",
     "private": true,
     "type": "module",
     "description": "Local-first MCP server for bounded, cited PDF decomposition and retrieval",
@@ -23,6 +23,7 @@
         "schemas",
         "docs",
         "manifest.json",
+        "pdfjs-polyfill.mjs",
         "examples",
         "README.md",
         "LICENSE",

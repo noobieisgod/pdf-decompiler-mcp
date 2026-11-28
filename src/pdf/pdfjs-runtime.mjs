@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 
 let createCanvas = null;
 try {
-    const canvasModule = await import('../../node_modules/@napi-rs/canvas/index.js');
+    const canvasModule = await import('@napi-rs/canvas');
     createCanvas = canvasModule.createCanvas ?? canvasModule.default?.createCanvas ?? null;
     if (canvasModule.DOMMatrix) {
         globalThis.DOMMatrix = canvasModule.DOMMatrix;
@@ -44,18 +44,19 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
     await import('../../pdfjs-polyfill.mjs');
 }
 
-const pdfjs = await import('../../node_modules/pdfjs-dist/legacy/build/pdf.mjs');
+const pdfjsUrl = import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs');
+const pdfjs = await import(pdfjsUrl);
 const { getDocument, VerbosityLevel, OPS, GlobalWorkerOptions, AnnotationMode } = pdfjs;
 
 try {
-    const workerPath = fileURLToPath(new URL('../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs', import.meta.url));
     if (GlobalWorkerOptions && !GlobalWorkerOptions.workerSrc) {
-        GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+        GlobalWorkerOptions.workerSrc = new URL('pdf.worker.mjs', pdfjsUrl).href;
     }
 } catch {
 }
 
-const LOCAL_FONT_DIR = fileURLToPath(new URL('../../node_modules/pdfjs-dist/standard_fonts/', import.meta.url));
+const LOCAL_FONT_DIR = fileURLToPath(new URL('../../standard_fonts/', pdfjsUrl));
+export const PDFJS_CMAP_DIRECTORY = `${fileURLToPath(new URL('../../cmaps', pdfjsUrl))}/`;
 
 export class LocalStandardFontDataFactory {
     async fetch({ filename }) {

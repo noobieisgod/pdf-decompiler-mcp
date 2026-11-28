@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "pdf-decompiler-mcp",
   "display_name": "PDF Decompiler MCP",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Local-first, bounded and cited PDF decomposition and retrieval over MCP.",
   "author": {
     "name": "Eric Lee (noobieisgod)",

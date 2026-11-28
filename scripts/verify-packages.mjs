@@ -1,7 +1,10 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { run } from './lib/process.mjs';
 
 const repository = path.resolve('.');
@@ -28,6 +31,31 @@ async function copyRelative(relative) {
     else await fs.copyFile(source, destination);
 }
 
+async function verifyNpmInstall(npmTarball) {
+    const consumer = path.join(work, 'npm-consumer');
+    const fixtures = path.join(repository, 'test', 'fixtures', 'generated');
+    await fs.mkdir(consumer);
+    await fs.writeFile(path.join(consumer, 'package.json'), '{"private":true}\n');
+    await run(process.execPath, [npmCli, 'install', '--omit=optional', '--ignore-scripts', '--no-audit', '--no-fund', npmTarball],
+        { cwd: consumer, timeout: 120_000, env: npmEnvironment });
+    const client = new Client({ name: 'package-verification', version });
+    const transport = new StdioClientTransport({
+        command: process.execPath,
+        args: [path.join(consumer, 'node_modules', name, 'src', 'index.mjs'), '--cache-mode', 'none', '--allow-root', fixtures],
+    });
+    try {
+        await client.connect(transport);
+        const opened = await client.callTool({ name: 'pdf_open', arguments: { source: path.join(fixtures, 'multi-column.pdf'), ocrPolicy: 'off' } });
+        assert.ok(!opened.isError, JSON.stringify(opened.structuredContent));
+        const { documentId, extractionFingerprint } = opened.structuredContent;
+        const result = await client.callTool({ name: 'pdf_get_pages', arguments: { documentId, extractionFingerprint, mode: 'text', pages: [1] } });
+        assert.ok(!result.isError, JSON.stringify(result.structuredContent));
+        assert.ok(result.structuredContent.data.elements.some(element => element.text?.includes('Right column eight')));
+    } finally {
+        await client.close();
+    }
+}
+
 try {
     await fs.rm(output, { recursive: true, force: true });
     await fs.mkdir(output, { recursive: true });
@@ -37,6 +65,7 @@ try {
     const npmFiles = npmResult.files.map(file => file.path).sort();
     const prohibitedNpm = npmFiles.filter(file => /(?:^|\/)(?:test|node_modules|artifacts)(?:\/|$)|\.(?:pdf|zip|mcpb)$/i.test(file));
     if (prohibitedNpm.length) throw new Error(`Prohibited npm files: ${prohibitedNpm.join(', ')}`);
+    await verifyNpmInstall(npmTarball);
 
     await fs.mkdir(stage, { recursive: true });
     for (const file of npmFiles) await copyRelative(file);
