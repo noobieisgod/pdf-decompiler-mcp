@@ -4,7 +4,7 @@ import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/s
 import { pathToFileURL } from 'node:url';
 import pkg from '../package.json' with { type: 'json' };
 import { loadConfig } from './config/runtime.mjs';
-import { detectTesseract } from './extract/ocr.mjs';
+import { missingTesseractLanguages } from './extract/ocr.mjs';
 import { DocumentManager } from './runtime/document-manager.mjs';
 import { createServer } from './server/create-server.mjs';
 import { TimedTransport } from './runtime/timing.mjs';
@@ -23,6 +23,9 @@ export function parseArgs(args) {
             overrides.cacheMode = args[++index];
         } else if (option === '--cache-directory') {
             overrides.cacheDirectory = args[++index];
+        } else if (option === '--ocr-languages') {
+            if (!args[index + 1] || args[index + 1].startsWith('--')) throw new Error('--ocr-languages requires Tesseract language codes');
+            overrides.ocrLanguages = args[++index];
         } else if (option === '--unrestricted-local-access') {
             overrides.unrestrictedLocalAccess = true;
         } else if (option === '--allow-unc') {
@@ -86,7 +89,14 @@ export async function runDoctor(overrides = {}) {
     } finally {
         await manager?.close().catch(() => {});
     }
-    checks.push({ name: 'ocr', status: detectTesseract() ? 'pass' : 'warn', detail: detectTesseract() ? 'Tesseract is available' : 'Tesseract is not available; native PDF text still works' });
+    const missing = config.ocrPolicy === 'off' ? [] : missingTesseractLanguages(config.ocrLanguages);
+    checks.push({
+        name: 'ocr',
+        status: missing.length ? 'warn' : 'pass',
+        detail: config.ocrPolicy === 'off' ? 'OCR is disabled' : missing.length
+            ? `Tesseract language data unavailable: ${missing.join(', ')}`
+            : `Tesseract data available for ${config.ocrLanguages}`,
+    });
     return { name: pkg.name, version: pkg.version, ready: !checks.some(check => check.status === 'fail'), checks };
 }
 

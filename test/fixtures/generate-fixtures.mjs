@@ -213,6 +213,11 @@ function readableRasterText(lines) {
     return { width, height, data };
 }
 
+export function buildGermanScan() {
+    const image = readableRasterText(['Größe und Übersicht', 'Straße mit süßen Äpfeln', 'Öffnungszeiten am Samstag']);
+    return buildFixturePdf([{ images: [{ ...image, x: 0, y: 0, drawWidth: 612, drawHeight: 792 }] }]);
+}
+
 function photographRaster() {
     const width = 96;
     const height = 64;

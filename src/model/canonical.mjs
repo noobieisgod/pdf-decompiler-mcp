@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 9;
+export const EXTRACTION_REVISION = 10;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -90,6 +90,7 @@ export function extractionFingerprint(config, dependencyFingerprint) {
         extraction: {
             maxPages: config.maxPages,
             ocrPolicy: config.ocrPolicy,
+            ...(config.ocrPolicy !== 'off' && config.ocrLanguages && config.ocrLanguages !== 'eng' ? { ocrLanguages: config.ocrLanguages } : {}),
             imagePolicy: 'png-text-jpeg-photo-0.75',
             backend: 'hybrid-mupdf-pdfjs',
         },

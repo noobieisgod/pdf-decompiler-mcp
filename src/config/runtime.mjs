@@ -48,10 +48,15 @@ export function loadConfig(overrides = {}) {
     }
     const ocrPolicy = overrides.ocrPolicy || env.PDF_DECOMPILER_OCR_POLICY || 'auto';
     if (!['auto', 'off', 'required'].includes(ocrPolicy)) throw new Error('ocrPolicy must be auto, off, or required');
+    const ocrLanguages = overrides.ocrLanguages ?? env.PDF_DECOMPILER_OCR_LANGUAGES ?? 'eng';
+    if (typeof ocrLanguages !== 'string' || !/^[a-z][a-z0-9_]{1,31}(?:\+[a-z][a-z0-9_]{1,31}){0,7}$/.test(ocrLanguages)) {
+        throw new Error('OCR languages must be one to eight Tesseract language codes joined with +.');
+    }
     const config = {
         schemaVersion: '3.0.0',
         extractorVersion: pkg.version,
         ocrPolicy,
+        ocrLanguages,
         allowRoots: overrides.allowRoots ?? parseJsonArray(env.PDF_DECOMPILER_ALLOW_ROOTS_JSON, 'PDF_DECOMPILER_ALLOW_ROOTS_JSON'),
         denyRoots: overrides.denyRoots ?? parseJsonArray(env.PDF_DECOMPILER_DENY_ROOTS_JSON, 'PDF_DECOMPILER_DENY_ROOTS_JSON'),
         unrestrictedLocalAccess: overrides.unrestrictedLocalAccess ?? parseBoolean(env.PDF_DECOMPILER_UNRESTRICTED_LOCAL_ACCESS),

@@ -19,6 +19,9 @@ import {
 import { unionBBoxes } from '../model/geometry.mjs';
 
 let tesseractAvailableCache;
+let installedLanguages;
+const UNSPACED_CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
 export function detectTesseract() {
     if (typeof tesseractAvailableCache === 'boolean') {
@@ -37,33 +40,47 @@ export function detectTesseract() {
     return tesseractAvailableCache;
 }
 
+export function missingTesseractLanguages(languages) {
+    if (!installedLanguages) {
+        const probe = spawnSync('tesseract', ['--list-langs'], { encoding: 'utf8', windowsHide: true, timeout: 5000 });
+        const listed = probe.status === 0 ? probe.stdout.split(/\r?\n/).filter(line => /^[a-z][a-z0-9_]{1,31}$/.test(line)) : [];
+        installedLanguages = new Set(listed);
+    }
+    return languages.split('+').filter(language => !installedLanguages.has(language));
+}
+
 export function ocrTextLooksGood(text) {
-    const trimmed = (text ?? '').trim();
+    const trimmed = (text ?? '').normalize('NFKC').trim();
     if (!trimmed) {
         return { ok: false, reason: 'OCR output was empty' };
     }
-    const chars = trimmed.length;
-    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    const chars = [...trimmed].length;
+    const tokensOf = line => UNSPACED_CJK.test(line)
+        ? [...wordSegmenter.segment(line)].filter(item => item.isWordLike || /[^\p{P}\s]/u.test(item.segment)).map(item => item.segment)
+        : line.split(/\s+/).filter(Boolean);
+    const isWord = token => /^[\p{L}\p{M}'’\-]+$/u.test(token)
+        && (UNSPACED_CJK.test(token) || (token.match(/\p{L}/gu)?.length ?? 0) >= 3);
+    const tokens = tokensOf(trimmed);
     const words = tokens.length;
-    const alnum = (trimmed.match(/[A-Za-z0-9]/g) ?? []).length;
+    const alnum = (trimmed.match(/[\p{L}\p{N}\p{M}]/gu) ?? []).length;
     const alnumRatio = chars ? alnum / chars : 0;
-    const repeatedRuns = (trimmed.match(/(.)\1{4,}/g) ?? []).join('').length;
+    const repeatedRuns = (trimmed.match(/(.)\1{4,}/gu) ?? []).join('').length;
     const repeatedRatio = chars ? repeatedRuns / chars : 0;
-    const wordlikeTokens = tokens.filter(token => /^[A-Za-z][A-Za-z'-]{2,}$/.test(token)).length;
+    const wordlikeTokens = tokens.filter(isWord).length;
     const symbolHeavyTokens = tokens.filter(token => {
-        const alnumCount = (token.match(/[A-Za-z0-9]/g) ?? []).length;
-        const symbolCount = token.length - alnumCount;
+        const alnumCount = (token.match(/[\p{L}\p{N}\p{M}]/gu) ?? []).length;
+        const symbolCount = [...token].length - alnumCount;
         return symbolCount > alnumCount;
     }).length;
-    const shortTokens = tokens.filter(token => token.replace(/[^A-Za-z]/g, '').length > 0 && token.replace(/[^A-Za-z]/g, '').length <= 2).length;
+    const shortTokens = tokens.filter(token => !UNSPACED_CJK.test(token) && /^\p{L}{1,2}$/u.test(token)).length;
     const lines = trimmed.split('\n').map(line => line.trim()).filter(Boolean);
     const corruptedLines = lines.filter(line => {
-        const lineTokens = line.split(/\s+/).filter(Boolean);
+        const lineTokens = tokensOf(line);
         if (!lineTokens.length) {
             return false;
         }
-        const lineWordlike = lineTokens.filter(token => /^[A-Za-z][A-Za-z'-]{2,}$/.test(token)).length;
-        const weirdClusters = (line.match(/[^A-Za-z0-9\s]{3,}/g) ?? []).length;
+        const lineWordlike = lineTokens.filter(isWord).length;
+        const weirdClusters = (line.match(/[^\p{L}\p{N}\p{M}\s]{3,}/gu) ?? []).length;
         return (lineWordlike / lineTokens.length) < 0.35 || weirdClusters > 0;
     }).length;
     const wordlikeRatio = words ? wordlikeTokens / words : 0;
@@ -161,13 +178,13 @@ function parseTsv(value, geometry) {
     return { words, blocks, text: blocks.map(block => block.text).join('\n\n') };
 }
 
-export async function runTesseractOcr(pngBytes, pageNum, geometry = null) {
+export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-decompiler-ocr-'));
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
         fs.writeFileSync(inputPath, pngBytes);
         const tsv = await new Promise((resolve, reject) => {
-            const proc = spawn('tesseract', [inputPath, 'stdout', '--psm', '6', 'tsv'], { windowsHide: true });
+            const proc = spawn('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', '6', '-c', 'tessedit_create_tsv=1'], { windowsHide: true });
             const chunks = [];
             const errChunks = [];
             proc.stdout.on('data', data => chunks.push(data));

@@ -468,6 +468,7 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
             allowOcr: budgetStillAvailable && options.ocrPolicy !== 'off',
             allowVisualFallback: false,
             ocrPolicy: options.ocrPolicy || 'auto',
+            ocrLanguages: options.ocrLanguages,
         };
         const chunkResults = await Promise.all(chunk.map(async (pageData) => {
             if (pageData.error) {

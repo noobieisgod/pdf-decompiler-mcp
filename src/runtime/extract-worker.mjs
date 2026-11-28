@@ -43,6 +43,7 @@ async function main() {
         maxPages: options.maxPages,
         timeBudgetMs: options.timeBudgetMs,
         ocrPolicy: options.ocrPolicy,
+        ocrLanguages: options.ocrLanguages,
         maxDecompressedBytes: options.maxDecompressedBytes,
     });
     await finalize({ ok: true, result }, 0);

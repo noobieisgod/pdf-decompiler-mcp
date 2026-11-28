@@ -14,6 +14,7 @@ Local file access is denied by default until at least one allow root is configur
 | `PDF_DECOMPILER_EXTRACTION_TIMEOUT_MS` | `50000` | Child-process wall-clock deadline |
 | `PDF_DECOMPILER_SUBPROCESS_MEMORY_BYTES` | `2147483648` | Native-process memory threshold |
 | `PDF_DECOMPILER_OCR_POLICY` | `auto` | `auto`, `off`, or `required` |
+| `PDF_DECOMPILER_OCR_LANGUAGES` | `eng` | Up to eight locally installed Tesseract language codes joined with `+`, such as `deu+eng` |
 | `PDF_DECOMPILER_CACHE_MODE` | `persistent` | `persistent`, `ephemeral`, or `none` |
 | `PDF_DECOMPILER_CACHE_DIR` | platform user cache | Persistent cache parent |
 | `PDF_DECOMPILER_CACHE_RETENTION_DAYS` | `30` | Persistent LRU retention |
@@ -34,7 +35,9 @@ Local file access is denied by default until at least one allow root is configur
 
 Boolean variables accept `1` or `true`.
 
-The executable also accepts `--allow-root`, `--deny-root`, `--cache-mode`, `--cache-directory`, `--unrestricted-local-access`, `--allow-unc`, and `--debug`. Multiple roots may follow one root option until the next option. The MCPB manifest uses this form so the host can pass user-selected directories without weakening the default policy.
+The executable also accepts `--allow-root`, `--deny-root`, `--cache-mode`, `--cache-directory`, `--ocr-languages`, `--unrestricted-local-access`, `--allow-unc`, and `--debug`. Multiple roots may follow one root option until the next option. The MCPB manifest uses this form so the host can pass user-selected directories without weakening the default policy.
+
+Run `tesseract --list-langs` to see installed OCR models. Set `--ocr-languages deu+eng` or the environment equivalent for German and English scans. Language order can affect recognition. If an explicitly selected language pack is missing, opens with OCR enabled return `ocr_language_unavailable`. Restart the server after installing additional models. Native text stays available with `ocrPolicy: "off"`.
 
 Example:
 

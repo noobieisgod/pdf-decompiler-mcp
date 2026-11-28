@@ -4,6 +4,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { CacheManager } from '../cache/cache-manager.mjs';
 import { fingerprint, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
+import { missingTesseractLanguages } from '../extract/ocr.mjs';
 import { buildCanonicalModel, extractionFingerprint, indexModel, mergeCanonicalModels, modelView } from '../model/canonical.mjs';
 import { BM25_INDEX_VERSION, BM25_SEARCH_REVISION, buildBm25, searchBm25, searchBm25AcrossDocuments } from '../search/bm25.mjs';
 import { MARKDOWN_FORMAT_VERSION, MARKDOWN_SERIALIZER_REVISION, serializeElementMarkdown, serializePagedMarkdown } from '../markdown/serializer.mjs';
@@ -246,10 +247,16 @@ export class DocumentManager {
     async open(args) {
         if (args.cursor) return this.continueOpen(args);
         if (args.source === undefined && args.sourceId) return this.openFromHandle(args);
+        const extractionConfig = { ...this.config, ocrPolicy: args.ocrPolicy || this.config.ocrPolicy };
+        if (extractionConfig.ocrPolicy !== 'off' && extractionConfig.ocrLanguages && extractionConfig.ocrLanguages !== 'eng') {
+            const missing = missingTesseractLanguages(extractionConfig.ocrLanguages);
+            if (missing.length) {
+                throw new PdfDecompilerError('ocr_language_unavailable', `Install the requested Tesseract language data: ${missing.join(', ')}.`);
+            }
+        }
         const loaded = await loadPdfSource(args.source, this.config);
         const descriptor = this.sourceDescriptor(loaded, args.sourceLabel);
         const documentId = `doc_${sha256(loaded.bytes)}`;
-        const extractionConfig = { ...this.config, ocrPolicy: args.ocrPolicy || this.config.ocrPolicy };
         const generation = this.generationForCurrentConfig(extractionConfig);
         const key = stateKey(documentId, generation);
         return this.withOpenLock(key, () => this.openLoaded(args, loaded, descriptor, extractionConfig, documentId, generation));

@@ -1,8 +1,54 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
+import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
+import { extractionFingerprint } from '../src/model/canonical.mjs';
+import { buildGermanScan } from './fixtures/generate-fixtures.mjs';
+import { temporaryConfig } from './helpers.mjs';
+
+test('OCR language selection is validated and part of the extraction generation', () => {
+    const english = loadConfig({ ocrLanguages: 'eng', ocrPolicy: 'auto' });
+    const german = { ...english, ocrLanguages: 'deu+eng' };
+    assert.equal(loadConfig({ ocrLanguages: german.ocrLanguages }).ocrLanguages, 'deu+eng');
+    for (const value of ['', '../deu', 'eng -l deu']) assert.throws(() => loadConfig({ ocrLanguages: value }), /language codes/);
+    assert.notEqual(extractionFingerprint(english, 'deps'), extractionFingerprint(german, 'deps'));
+    assert.equal(extractionFingerprint({ ...english, ocrPolicy: 'off' }, 'deps'), extractionFingerprint({ ...german, ocrPolicy: 'off' }, 'deps'));
+});
+
+test('OCR text validation accepts Unicode letters and unspaced Japanese', () => {
+    assert.equal(ocrTextLooksGood('Größe und Übersicht der Öffnungszeiten am Samstag').ok, true);
+    assert.equal(ocrTextLooksGood('この資料は半導体製造の工程と輸出管理について説明します').ok, true);
+    assert.equal(ocrTextLooksGood('@@@@@@ ### $$$$ === ... //////').ok, false);
+});
+
+test('a requested missing OCR pack returns an actionable error', async t => {
+    const root = path.resolve('test/fixtures/generated');
+    const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], ocrLanguages: 'qqq_missing' })).init();
+    t.after(() => manager.close());
+    const source = path.join(root, 'multi-column.pdf');
+    await assert.rejects(manager.open({ source, ocrPolicy: 'auto' }), { code: 'ocr_language_unavailable' });
+    assert.equal((await manager.open({ source, ocrPolicy: 'off' })).completion.documentComplete, true);
+});
+
+test('German OCR preserves umlauts and yields searchable citations', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    if (missingTesseractLanguages('deu').length) return t.skip('German Tesseract data unavailable');
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required', ocrLanguages: 'deu' });
+    const source = path.join(root, 'german-scan.pdf');
+    await fs.writeFile(source, buildGermanScan());
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+    const text = elements.filter(element => element.textSource === 'ocr').map(element => element.text).join(' ');
+    assert.match(text, /Größe und Übersicht/);
+    assert.match(text, /Straße mit süßen Äpfeln/);
+    assert.match(text, /Öffnungszeiten am Samstag/);
+    const [hit] = (await manager.search({ ...opened, query: 'Öffnungszeiten', strategy: 'phrase' })).results;
+    assert.ok(hit.citation.bbox?.width > 0);
+});
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');

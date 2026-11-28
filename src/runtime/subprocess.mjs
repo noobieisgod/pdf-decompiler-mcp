@@ -75,6 +75,7 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
         maxImageDim: Math.min(options.maxImageDim || 1200, 4096),
         maxPages: config.maxPages,
         ocrPolicy: config.ocrPolicy,
+        ocrLanguages: config.ocrLanguages,
         maxDecompressedBytes: config.maxDecompressedBytes,
         timeBudgetMs: Math.max(1000, config.extractionTimeoutMs - 2000),
     });

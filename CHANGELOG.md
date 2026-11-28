@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Select local Tesseract language packs for scanned PDFs and validate OCR text across scripts.
+
 - Center search excerpts on the cited match so surrounding text cannot hide the evidence.
 
 - Use the page index for selected-page reads and continuations.

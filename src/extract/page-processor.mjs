@@ -17,6 +17,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         allowOcr = true,
         allowVisualFallback = true,
         ocrPolicy = 'auto',
+        ocrLanguages = 'eng',
     } = options;
     const bodyItems = hfPositions.size > 0
         ? rawItems.filter(item => {
@@ -85,7 +86,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     pixelHeight: ocrCanvas.height,
                     pageWidth: viewport.width,
                     pageHeight: viewport.height,
-                });
+                }, ocrLanguages);
                 if (ocrResult.ok) {
                     extractionMode = 'ocr';
                     routingMode = 'page_ocr';
@@ -319,7 +320,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                             regionId: image.placementId || `image-region:${rawImageIndex + 1}`,
                             bbox: image.bbox,
                         },
-                    });
+                    }, ocrLanguages);
                     ocrDiagnostics.push(...(result.diagnostics || []));
                     if (!result.ok) {
                         ocrRegions.rejected += 1;
