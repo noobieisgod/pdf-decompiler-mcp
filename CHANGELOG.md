@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Center search excerpts on the cited match so surrounding text cannot hide the evidence.
+
 - Use the page index for selected-page reads and continuations.
 
 - Read native vertical Japanese columns from right to left and cite their visible page regions.

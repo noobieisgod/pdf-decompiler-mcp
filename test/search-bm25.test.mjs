@@ -83,6 +83,35 @@ test('page search ranks repeated exact evidence and returns one cited match per 
     assert.deepEqual(searchBm25(index, 'net income', { granularity: 'page', pages: [1] }).map(hit => hit.page), [1]);
 });
 
+test('the page excerpt shows the cited match even if an earlier neighbor contains the query', () => {
+    const raw = rawDocument(1);
+    const block = (text, y) => ({ text, role: 'text', bbox: { x: 10, y, width: 180, height: 10 } });
+    raw.pages[0].tables = [];
+    raw.pages[0].textBlocks = [
+        block('Budget sidebar. ' + 'sidebar '.repeat(80), 10),
+        block('budget budget budget budget actual matching result', 30),
+        block('The recommended allocation is $120.', 50),
+    ];
+    const index = buildBm25(buildCanonicalModel(Buffer.from('%PDF-cited-excerpt'), raw, config, 'deps'));
+    const [hit] = searchBm25(index, 'budget', { granularity: 'page' });
+    assert.equal(hit.citation.elementId, 'block:1:2');
+    assert.match(hit.snippet, /actual matching result/);
+    assert.match(hit.snippet, /recommended allocation is \$120/);
+    assert.ok(hit.snippet.length <= 500);
+});
+
+test('excerpt offsets use whole tokens and handle Unicode case expansion', () => {
+    const raw = rawDocument(1);
+    raw.pages[0].tables = [];
+    raw.pages[0].textBlocks[0].text = 'Internetwork. ' + 'İ '.repeat(600) + ' Net profit increased. ' + 'closing '.repeat(50);
+    const index = buildBm25(buildCanonicalModel(Buffer.from('%PDF-unicode-excerpt'), raw, config, 'deps'));
+    for (const phrase of [false, true]) {
+        const [hit] = searchBm25(index, 'net', { phrase, snippetChars: 80 });
+        assert.match(hit.snippet, /Net profit increased/);
+        assert.ok(hit.snippet.length <= 80);
+    }
+});
+
 test('phrase search finds consecutive Chinese and Japanese characters within sentences', () => {
     const raw = rawDocument(2);
     const sentences = ['公司營運包括先進製程與資訊安全。', '当社の半導体輸出規制と製造業の状況'];

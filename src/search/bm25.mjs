@@ -3,6 +3,7 @@ import { PdfDecompilerError } from '../core/errors.mjs';
 const TOKEN_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]|[[\p{L}\p{N}]--[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]]+/gv;
 const MAX_PHRASE_TOKENS = 64;
 export const BM25_INDEX_VERSION = 4;
+export const BM25_SEARCH_REVISION = 2;
 
 export function tokenize(value) {
     return String(value || '').normalize('NFKC').toLocaleLowerCase('und').match(TOKEN_PATTERN) || [];
@@ -86,6 +87,45 @@ function hasPosition(positions, target) {
     return positions[start] === target;
 }
 
+function excerpt(index, document, matchedTerms, phraseStart, limit) {
+    const text = phraseStart === null ? document.text : document.text.normalize('NFKC');
+    if (text.length <= limit) {
+        if (phraseStart !== null || !document.context || text.length === limit) return text;
+        const center = document.context.findIndex(item => typeof item === 'number' && index.documents[item] === document);
+        if (center < 0) return text;
+        const neighbor = item => typeof item === 'number' ? index.documents[item].text : item;
+        const before = document.context.slice(0, center).map(neighbor).join('\n');
+        const after = document.context.slice(center + 1).map(neighbor).join('\n');
+        const leading = Math.min(Math.floor(limit / 3), Math.max(0, limit - text.length - 1));
+        const prefix = before && leading ? before.slice(-leading) + '\n' : '';
+        const trailing = limit - prefix.length - text.length - 1;
+        return prefix + text + (after && trailing > 0 ? '\n' + after.slice(0, trailing) : '');
+    }
+
+    const position = phraseStart ?? matchedTerms.reduce((first, token) => Math.min(first, document.positions[token][0]), Infinity);
+    const display = text.normalize('NFKC');
+    const lower = display.toLocaleLowerCase('und');
+    let tokenPosition = 0;
+    for (const match of lower.matchAll(TOKEN_PATTERN)) {
+        if (tokenPosition++ !== position) continue;
+        let offset = match.index;
+        if (lower.length !== display.length) {
+            // Case folding can expand characters before the match.
+            let start = 0;
+            let end = display.length;
+            while (start < end) {
+                const middle = (start + end) >>> 1;
+                if (display.slice(0, middle).toLocaleLowerCase('und').length < offset) start = middle + 1;
+                else end = middle;
+            }
+            offset = start;
+        }
+        const start = Math.max(0, Math.min(display.length - limit, offset - Math.floor(limit / 3)));
+        return display.slice(start, start + limit);
+    }
+    return display.slice(0, limit);
+}
+
 export function searchBm25(index, query, options = {}) {
     const phraseTokens = tokenize(query);
     if (options.phrase && phraseTokens.length > MAX_PHRASE_TOKENS) {
@@ -130,24 +170,6 @@ export function searchBm25(index, query, options = {}) {
                 }
             }
             if (options.phrase && !occurrences) continue;
-            const snippetChars = options.snippetChars || 500;
-            const snippetSource = phraseStart !== null ? document.text.normalize('NFKC')
-                : document.context?.map(item => typeof item === 'number' ? index.documents[item].text : item).join('\n') || document.text;
-            const normalizedText = snippetSource.normalize('NFKC').toLocaleLowerCase('und');
-            let firstMatch = 0;
-            if (phraseStart === null) {
-                firstMatch = queryTokens.map(token => normalizedText.indexOf(token)).filter(position => position >= 0).sort((a, b) => a - b)[0] ?? 0;
-            } else {
-                let tokenPosition = 0;
-                for (const match of normalizedText.matchAll(TOKEN_PATTERN)) {
-                    if (tokenPosition === phraseStart) {
-                        firstMatch = match.index;
-                        break;
-                    }
-                    tokenPosition += 1;
-                }
-            }
-            const start = Math.max(0, firstMatch - Math.floor(snippetChars / 3));
             const match = {
                 id: document.id,
                 page: document.page,
@@ -155,7 +177,7 @@ export function searchBm25(index, query, options = {}) {
                 readingOrder: document.readingOrder,
                 score,
                 matchedTerms,
-                snippet: snippetSource.slice(start, start + snippetChars),
+                snippet: excerpt(index, document, matchedTerms, phraseStart, options.snippetChars || 500),
                 citation: document.citation,
                 citations: [document.citation],
                 contributingElementIds: [document.id],
