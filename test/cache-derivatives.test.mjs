@@ -6,7 +6,7 @@ import { CacheManager } from '../src/cache/cache-manager.mjs';
 import { sha256 } from '../src/core/crypto.mjs';
 import { fullExportIdentity } from '../src/markdown/serializer.mjs';
 import { buildCanonicalModel } from '../src/model/canonical.mjs';
-import { buildBm25 } from '../src/search/bm25.mjs';
+import { BM25_INDEX_VERSION, buildBm25 } from '../src/search/bm25.mjs';
 import { rawDocument, temporaryConfig } from './helpers.mjs';
 
 test('canonical, BM25, and Markdown derivative invalidation layers remain independent', async t => {
@@ -26,7 +26,7 @@ test('canonical, BM25, and Markdown derivative invalidation layers remain indepe
     assert.equal(await cache.loadDerivedMarkdown(model.documentId, model.extractionFingerprint, changedSerializer), null);
     await assert.rejects(cache.saveDerivedMarkdown(model.documentId, model.extractionFingerprint, changedSerializer, source, { bytes: bytes.length, sha256: '0'.repeat(64) }), { code: 'MARKDOWN_CHECKSUM_FAILED' });
     const bm25Path = path.join(cache.generationPath(model.documentId, model.extractionFingerprint), 'bm25.json');
-    await fs.writeFile(bm25Path, JSON.stringify({ version: 1 }));
+    await fs.writeFile(bm25Path, JSON.stringify({ version: BM25_INDEX_VERSION - 1 }));
     const loaded = await cache.loadGeneration(model.documentId, model.extractionFingerprint);
     assert.equal(loaded.model.documentId, model.documentId);
     assert.equal(loaded.bm25, null);

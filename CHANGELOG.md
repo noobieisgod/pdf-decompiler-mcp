@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Store term positions and neighbor references once to reduce keyword index size and load time.
+
 - Load or build the keyword index on the first search so page-only reads skip the work.
 
 - Added page-ranked lexical search with one cited excerpt per page.

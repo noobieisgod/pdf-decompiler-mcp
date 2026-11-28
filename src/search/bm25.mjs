@@ -2,6 +2,7 @@ import { PdfDecompilerError } from '../core/errors.mjs';
 
 const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 const MAX_PHRASE_TOKENS = 64;
+export const BM25_INDEX_VERSION = 3;
 
 export function tokenize(value) {
     return String(value || '').normalize('NFKC').toLocaleLowerCase('und').match(TOKEN_PATTERN) || [];
@@ -36,39 +37,53 @@ export function buildBm25(model) {
     const canonicalElements = [...model.elements].sort((a, b) => a.page - b.page || a.readingOrder - b.readingOrder || a.id.localeCompare(b.id));
     const canonicalIds = new Set(canonicalElements.map(element => element.id));
     const sourceElements = [...canonicalElements, ...supplemental];
-    const documents = sourceElements
-        .map((element, index) => ({
-            id: element.id,
-            page: element.page,
-            type: element.type,
-            readingOrder: element.readingOrder,
-            text: searchable(element),
-            contextText: canonicalIds.has(element.id)
-                ? [sourceElements[index - 1], element, sourceElements[index + 1]]
-                    .filter(candidate => candidate?.page === element.page && canonicalIds.has(candidate.id))
-                    .map(searchable).filter(Boolean).join('\n')
-                : searchable(element),
-            citation: element.citation,
-            tokens: tokenize(searchable(element)),
-        }))
-        .filter(document => document.tokens.length);
-    for (const document of documents) {
-        const positions = Object.create(null);
-        document.tokens.forEach((token, index) => (positions[token] ||= []).push(index));
-        document.positions = positions;
-    }
+    const documents = [];
+    const indexedOffsets = new Map();
     const documentFrequency = new Map();
-    for (const document of documents) {
-        for (const token of new Set(document.tokens)) {
+    let tokenCount = 0;
+    for (const [offset, element] of sourceElements.entries()) {
+        const text = searchable(element);
+        const tokens = tokenize(text);
+        if (!tokens.length) continue;
+        const positions = Object.create(null);
+        tokens.forEach((token, index) => (positions[token] ||= []).push(index));
+        for (const token of Object.keys(positions)) {
             documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1);
         }
+        indexedOffsets.set(offset, documents.length);
+        documents.push({ id: element.id, page: element.page, type: element.type, readingOrder: element.readingOrder,
+            text, citation: element.citation, length: tokens.length, positions });
+        tokenCount += tokens.length;
+    }
+    for (const [offset, index] of indexedOffsets) {
+        const element = sourceElements[offset];
+        if (!canonicalIds.has(element.id)) continue;
+        const context = [offset - 1, offset, offset + 1].flatMap(neighbor => {
+            const candidate = sourceElements[neighbor];
+            if (candidate?.page !== element.page || !canonicalIds.has(candidate.id)) return [];
+            if (indexedOffsets.has(neighbor)) return [indexedOffsets.get(neighbor)];
+            const text = searchable(candidate);
+            return text ? [text] : [];
+        });
+        if (context.length > 1) documents[index].context = context;
     }
     return {
-        version: 2,
-        averageLength: documents.reduce((sum, item) => sum + item.tokens.length, 0) / Math.max(1, documents.length),
+        version: BM25_INDEX_VERSION,
+        averageLength: tokenCount / Math.max(1, documents.length),
         documentFrequency: Object.fromEntries([...documentFrequency.entries()].sort(([a], [b]) => a.localeCompare(b))),
         documents,
     };
+}
+
+function hasPosition(positions, target) {
+    let start = 0;
+    let end = positions.length;
+    while (start < end) {
+        const middle = (start + end) >>> 1;
+        if (positions[middle] < target) start = middle + 1;
+        else end = middle;
+    }
+    return positions[start] === target;
 }
 
 export function searchBm25(index, query, options = {}) {
@@ -99,7 +114,7 @@ export function searchBm25(index, query, options = {}) {
             if (!Object.hasOwn(document.positions, token)) continue;
             const frequency = document.positions[token].length;
             matchedTerms.push(token);
-            const denominator = frequency + k1 * (1 - b + b * document.tokens.length / averageLength);
+            const denominator = frequency + k1 * (1 - b + b * document.length / averageLength);
             score += idf * ((frequency * (k1 + 1)) / denominator);
         }
         if (score > 0) {
@@ -108,7 +123,7 @@ export function searchBm25(index, query, options = {}) {
             if ((options.phrase || (pageMatches && phraseTokens.length > 1 && phraseTokens.length <= MAX_PHRASE_TOKENS))
                 && matchedTerms.length === queryTokens.length) {
                 for (const start of document.positions[phraseTokens[0]]) {
-                    if (!phraseTokens.every((token, offset) => document.tokens[start + offset] === token)) continue;
+                    if (!phraseTokens.every((token, offset) => offset === 0 || hasPosition(document.positions[token], start + offset))) continue;
                     phraseStart ??= start;
                     occurrences += 1;
                     if (!pageMatches) break;
@@ -116,7 +131,8 @@ export function searchBm25(index, query, options = {}) {
             }
             if (options.phrase && !occurrences) continue;
             const snippetChars = options.snippetChars || 500;
-            const snippetSource = phraseStart !== null ? document.text.normalize('NFKC') : document.contextText || document.text;
+            const snippetSource = phraseStart !== null ? document.text.normalize('NFKC')
+                : document.context?.map(item => typeof item === 'number' ? index.documents[item].text : item).join('\n') || document.text;
             const normalizedText = snippetSource.normalize('NFKC').toLocaleLowerCase('und');
             let firstMatch = 0;
             if (phraseStart === null) {

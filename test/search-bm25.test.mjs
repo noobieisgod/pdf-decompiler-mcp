@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildCanonicalModel } from '../src/model/canonical.mjs';
-import { buildBm25, searchBm25, tokenize } from '../src/search/bm25.mjs';
+import { BM25_INDEX_VERSION, buildBm25, searchBm25, tokenize } from '../src/search/bm25.mjs';
 import { rawDocument } from './helpers.mjs';
 
 const config = { extractorVersion: '3.0.0', maxPages: 5000, ocrPolicy: 'auto' };
@@ -23,11 +23,12 @@ test('BM25 indexes prototype-named tokens without object prototype collisions', 
         pages: [{ ...rawDocument(1).pages[0], text: 'constructor prototype toString', textBlocks: [{ text: 'constructor prototype toString', role: 'text', bbox: { x: 10, y: 10, width: 200, height: 20 } }] }],
     }, config, 'deps');
     const index = buildBm25(constructorModel);
-    assert.equal(index.version, 2);
+    assert.equal(index.version, BM25_INDEX_VERSION);
     assert.ok(searchBm25(index, 'constructor')[0].snippet.includes('constructor'));
     const persisted = JSON.parse(JSON.stringify(index));
     assert.deepEqual(searchBm25(persisted, 'constructor prototype'), searchBm25(index, 'constructor prototype'));
     assert.deepEqual(searchBm25(persisted, 'hasOwnProperty'), []);
+    assert.ok(persisted.documents.every(document => !('tokens' in document) && !('contextText' in document)));
 });
 
 test('BM25 snippets include neighboring values and adjacent hits are grouped without repeated page fragments', () => {

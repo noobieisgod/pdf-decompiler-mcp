@@ -64,7 +64,7 @@ Every successful open also creates a random process-local `sourceId`. Multiple h
 
 ## Retrieval
 
-BM25 tokenizes Unicode text with NFKC normalization, persists term positions, and indexes blocks, tables and cells, OCR text, captions, annotations, metadata, and outline entries. The first search loads or builds the index. Page reads can use a canonical generation without reading or writing a BM25 index. Ordering is score, page, reading order, then ID. Semantic search uses cosine-equivalent dot product over normalized vectors. Hybrid search uses reciprocal-rank fusion with `k = 60`.
+BM25 tokenizes Unicode text with NFKC normalization, persists term positions and document lengths, and indexes blocks, tables and cells, OCR text, captions, annotations, metadata, and outline entries. Neighboring snippets use references to indexed text instead of duplicating it. The first search loads or builds the index. Page reads can use a canonical generation without reading or writing a BM25 index. Ordering is score, page, reading order, then ID. Semantic search uses cosine-equivalent dot product over normalized vectors. Hybrid search uses reciprocal-rank fusion with `k = 60`.
 
 The three page modes are:
 

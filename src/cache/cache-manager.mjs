@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { fingerprint, randomKey, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
 import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../model/canonical.mjs';
+import { BM25_INDEX_VERSION } from '../search/bm25.mjs';
 
 const DAY = 86_400_000;
 const execFileAsync = promisify(execFile);
@@ -323,7 +324,7 @@ export class CacheManager {
     async loadBm25Index(documentId, generation) {
         try {
             const bm25 = JSON.parse(await fs.readFile(path.join(this.generationPath(documentId, generation), 'bm25.json'), 'utf8'));
-            return bm25?.version === 2 ? bm25 : null;
+            return bm25?.version === BM25_INDEX_VERSION ? bm25 : null;
         } catch {
             return null;
         }
