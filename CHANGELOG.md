@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Load or build the keyword index on the first search so page-only reads skip the work.
+
 - Added page-ranked lexical search with one cited excerpt per page.
 
 - Reuse a bounded amount of page text between header detection and extraction to avoid parsing it twice.

@@ -238,7 +238,7 @@ export class CacheManager {
         return path.join(this.root, 'tombstones', `${documentId}-${generation}.json`);
     }
 
-    async loadGeneration(documentId, generation) {
+    async loadGeneration(documentId, generation, { loadBm25 = true } = {}) {
         const root = this.generationPath(documentId, generation);
         const manifest = await fs.readFile(path.join(root, 'manifest.json'), 'utf8').then(JSON.parse, () => null);
         if (!manifest || manifest.version !== 4 || manifest.canonicalFormatVersion !== 4
@@ -266,10 +266,10 @@ export class CacheManager {
         }
         manifest.lastAccessedAt = Date.now();
         await atomicJson(path.join(root, 'manifest.json'), manifest);
-        const bm25 = await fs.readFile(path.join(root, 'bm25.json'), 'utf8').then(JSON.parse, () => null);
+        const bm25 = loadBm25 ? await this.loadBm25Index(documentId, generation) : null;
         const semantic = await fs.readFile(this.semanticPath(documentId, generation), 'utf8').then(JSON.parse, () =>
             fs.readFile(path.join(root, 'semantic.json'), 'utf8').then(JSON.parse, () => null));
-        return { model, pdfBytes: await fs.readFile(path.join(root, 'source.pdf')), bm25: bm25?.version === 2 ? bm25 : null, semantic };
+        return { model, pdfBytes: await fs.readFile(path.join(root, 'source.pdf')), bm25, semantic };
     }
 
     async saveDerivedMarkdown(documentId, generation, serializerFingerprint, sourcePath, metadata) {
@@ -318,6 +318,15 @@ export class CacheManager {
         if (!(await this.generationExists(documentId, generation))) throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
         const target = this.semanticPath(documentId, generation);
         if (!(await exists(target))) await atomicJson(target, semantic);
+    }
+
+    async loadBm25Index(documentId, generation) {
+        try {
+            const bm25 = JSON.parse(await fs.readFile(path.join(this.generationPath(documentId, generation), 'bm25.json'), 'utf8'));
+            return bm25?.version === 2 ? bm25 : null;
+        } catch {
+            return null;
+        }
     }
 
     async saveBm25Index(documentId, generation, bm25) {

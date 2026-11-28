@@ -80,7 +80,7 @@ async function correctiveLocalPdfs(root, available) {
             if (!available.includes(name)) continue;
             const opened = await smoke.open({ source: path.join(root, name) });
             const state = await smoke.requireState(opened.documentId, opened.extractionFingerprint);
-            if (!opened.completion.documentComplete || !opened.completion.requestedScopeComplete || !opened.completion.resultComplete || state.model.pages.length !== pages || !state.bm25) throw new Error(`${name} complete-open smoke failed`);
+            if (!opened.completion.documentComplete || !opened.completion.requestedScopeComplete || !opened.completion.resultComplete || state.model.pages.length !== pages) throw new Error(`${name} complete-open smoke failed`);
             await smoke.closeDocument(opened);
             console.log(`complete-open smoke: ${name}; pages=${pages}`);
         }

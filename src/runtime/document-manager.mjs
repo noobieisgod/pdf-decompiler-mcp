@@ -143,24 +143,37 @@ export class DocumentManager {
         return extractionFingerprint(config, dependencyFingerprint);
     }
 
-    async bm25ForCached(cached) {
-        if (cached.bm25?.version === 2) return cached.bm25;
-        const bm25 = buildBm25Safely(cached.model, this.config.debug);
-        await this.cache.saveBm25Index(cached.model.documentId, cached.model.extractionFingerprint, bm25);
-        return bm25;
+    async bm25ForSearch(state) {
+        if (state.bm25Promise) return state.bm25Promise;
+        const { model, persisted } = state;
+        const { documentId, extractionFingerprint } = model;
+        const pending = (async () => {
+            const cached = persisted && await this.cache.loadBm25Index(documentId, extractionFingerprint);
+            if (cached) return cached;
+            const bm25 = buildBm25Safely(model, this.config.debug);
+            if (persisted) await this.cache.saveBm25Index(documentId, extractionFingerprint, bm25);
+            return bm25;
+        })();
+        state.bm25Promise = pending;
+        try {
+            return await pending;
+        } catch (error) {
+            if (state.bm25Promise === pending) state.bm25Promise = null;
+            throw error;
+        }
     }
 
-    async activate(model, pdfBytes, bm25, semantic = null, { persisted = false, extractionConfig = this.config } = {}) {
+    async activate(model, pdfBytes, { persisted = false, semantic = null, extractionConfig = this.config } = {}) {
         const key = stateKey(model.documentId, model.extractionFingerprint);
         const existing = this.states.get(key);
         if (existing) return existing;
         const diskBacked = !model.partial && this.config.cache.mode !== 'none';
-        if (diskBacked && !persisted) await this.cache.saveGeneration(model, pdfBytes, bm25, semantic);
+        if (diskBacked && !persisted) await this.cache.saveGeneration(model, pdfBytes);
         const leaseId = diskBacked ? await this.cache.acquireLease(model.documentId, model.extractionFingerprint) : null;
         const state = {
             model,
             pdfBytes,
-            bm25,
+            bm25Promise: null,
             semantic,
             embedder: null,
             indexes: indexModel(model),
@@ -243,9 +256,9 @@ export class DocumentManager {
             return this.openResult(active, descriptor, { cacheHit: missing.length === 0, requestedPages });
         }
         if (!args.refresh && this.config.cache.mode === 'persistent') {
-            const cached = await this.cache.loadGeneration(documentId, generation);
+            const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
             if (cached) {
-                const state = await this.activate(cached.model, cached.pdfBytes, await this.bm25ForCached(cached), cached.semantic, { persisted: true, extractionConfig });
+                const state = await this.activate(cached.model, cached.pdfBytes, { persisted: true, semantic: cached.semantic, extractionConfig });
                 this.addSourceHandle(state, descriptor);
                 return this.openResult(state, descriptor, { cacheHit: true, requestedPages: openScopePages(args.pages, state.model.totalPages) });
             }
@@ -266,8 +279,7 @@ export class DocumentManager {
             };
         }
         const model = buildCanonicalModel(loaded.bytes, extracted.result, extractionConfig, dependencyFingerprint);
-        const bm25 = buildBm25Safely(model, this.config.debug);
-        const state = await this.activate(model, loaded.bytes, bm25, null, { extractionConfig });
+        const state = await this.activate(model, loaded.bytes, { extractionConfig });
         this.addSourceHandle(state, descriptor);
         state.diagnostics = extracted.diagnostics;
         return this.openResult(state, descriptor, { cacheHit: false, requestedPages: openScopePages(args.pages, state.model.totalPages) });
@@ -338,14 +350,13 @@ export class DocumentManager {
                 remainingPages: model.totalPages - model.pages.length,
             }
             : null;
-        const bm25 = buildBm25Safely(model, this.config.debug);
         const indexes = indexModel(model);
         if (!model.partial && !state.persisted && this.config.cache.mode !== 'none') {
-            await this.cache.saveGeneration(model, state.pdfBytes, bm25);
+            await this.cache.saveGeneration(model, state.pdfBytes);
             state.leaseId = await this.cache.acquireLease(model.documentId, model.extractionFingerprint);
             state.persisted = true;
         }
-        Object.assign(state, { model, bm25, indexes, semantic: null, diagnostics: extracted.diagnostics });
+        Object.assign(state, { model, bm25Promise: null, indexes, semantic: null, diagnostics: extracted.diagnostics });
     }
 
     async requireState(documentId, generation = null) {
@@ -358,9 +369,9 @@ export class DocumentManager {
             return state;
         }
         if (this.config.cache.mode !== 'persistent') throw new PdfDecompilerError('expired_process_state', 'The process-local document state has expired.');
-        const cached = await this.cache.loadGeneration(documentId, selectedGeneration);
+        const cached = await this.cache.loadGeneration(documentId, selectedGeneration, { loadBm25: false });
         if (!cached) throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
-        return this.activate(cached.model, cached.pdfBytes, await this.bm25ForCached(cached), cached.semantic, { persisted: true });
+        return this.activate(cached.model, cached.pdfBytes, { persisted: true, semantic: cached.semantic });
     }
 
     async withOperation(documentId, generation, callback) {
@@ -418,7 +429,7 @@ export class DocumentManager {
         }
         const options = { pages: args.pages, elementTypes: args.elementTypes, phrase: strategy === 'phrase', granularity };
         const warnings = [];
-        const bm25Results = searchBm25(state.bm25, args.query, options);
+        const bm25Results = searchBm25(await this.bm25ForSearch(state), args.query, options);
         let results = bm25Results;
         if (strategy === 'semantic' || strategy === 'hybrid') {
             if (!this.config.semantic.enabled) {
@@ -744,7 +755,7 @@ export class DocumentManager {
                 throw new PdfDecompilerError(codes[reason] || (current && current !== generation ? 'stale_extraction_fingerprint' : 'cache_generation_missing'), 'The extraction generation is unavailable.');
             }
             temporaryLease = await this.cache.acquireLease(documentId, generation);
-            const cached = await this.cache.loadGeneration(documentId, generation);
+            const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
             if (!cached) {
                 await this.cache.releaseLease(temporaryLease);
                 throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');

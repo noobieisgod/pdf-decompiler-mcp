@@ -31,6 +31,9 @@ try {
     const searchStart = performance.now();
     const search = await manager.search({ ...warm, query: 'Revenue evidence' });
     const searchMs = performance.now() - searchStart;
+    const repeatSearchStart = performance.now();
+    await manager.search({ ...warm, query: 'Revenue evidence' });
+    const repeatSearchMs = performance.now() - repeatSearchStart;
     const output = {
         schemaVersion: 1,
         configuration: { node: process.version, platform: process.platform, arch: process.arch, cacheMode: 'persistent', semantic: false, repetitions: 1 },
@@ -38,6 +41,7 @@ try {
             coldOpenMs: coldMs,
             warmOpenMs: warmMs,
             searchMs,
+            repeatSearchMs,
             rssBytes: process.memoryUsage().rss,
             cacheBytes: await directoryBytes(manager.cache.root),
             searchResponseBytes: Buffer.byteLength(JSON.stringify(search)),
@@ -46,7 +50,7 @@ try {
             expectedTopPage: 2,
             actualTopPage: search.results[0]?.page || null,
             citationCorrect: search.results[0]?.citation?.documentId === warm.documentId,
-            extractionComplete: warm.complete,
+            extractionComplete: warm.completion.documentComplete,
         },
         claims: 'No comparative performance claim is made by this output.',
     };

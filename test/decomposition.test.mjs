@@ -43,6 +43,7 @@ test('identical bytes are stable on cold and warm persistent-cache opens', async
     const firstManager = await new DocumentManager(config).init();
     const cold = await firstManager.open({ source });
     const coldIds = (await firstManager.getPages(cold)).elements.map(item => item.id);
+    assert.equal(await firstManager.cache.loadBm25Index(cold.documentId, cold.extractionFingerprint), null);
     await firstManager.closeDocument(cold);
     await firstManager.close();
     const secondManager = await new DocumentManager(config).init();
@@ -52,6 +53,11 @@ test('identical bytes are stable on cold and warm persistent-cache opens', async
     assert.equal(warm.documentId, cold.documentId);
     assert.equal(warm.extractionFingerprint, cold.extractionFingerprint);
     assert.deepEqual((await secondManager.getPages(warm)).elements.map(item => item.id), coldIds);
+    assert.equal(await secondManager.cache.loadBm25Index(warm.documentId, warm.extractionFingerprint), null);
+    const [firstSearch, concurrentSearch] = await Promise.all([1, 2].map(() => secondManager.search({ ...warm, query: 'Stable extraction' })));
+    assert.deepEqual(firstSearch.results, concurrentSearch.results);
+    assert.equal(firstSearch.results[0].citation.elementId, coldIds[0]);
+    assert.ok(await secondManager.cache.loadBm25Index(warm.documentId, warm.extractionFingerprint));
 });
 
 test('concurrent scoped opens add only missing pages to the shared document', async t => {
