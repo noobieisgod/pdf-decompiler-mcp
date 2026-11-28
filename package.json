@@ -67,14 +67,14 @@
         "audit": "npm audit --audit-level=high"
     },
     "dependencies": {
-        "@modelcontextprotocol/server": "2.0.0",
+        "@modelcontextprotocol/server": "2.4.0",
         "mupdf": "1.27.0",
         "pdfjs-dist": "5.5.207",
-        "zod": "4.3.6"
+        "zod": "4.6.7"
     },
     "devDependencies": {
         "@anthropic-ai/mcpb": "2.1.2",
-        "@modelcontextprotocol/client": "2.0.0"
+        "@modelcontextprotocol/client": "2.4.0"
     },
     "optionalDependencies": {
         "@napi-rs/canvas": "0.1.97"
@@ -88,7 +88,11 @@
         }
     },
     "overrides": {
-        "tmp": "0.2.7"
+        "tmp": "0.2.7",
+        "@anthropic-ai/mcpb": {
+            "node-forge": "1.4.4",
+            "zod": "$zod"
+        }
     },
     "engines": {
         "node": "^22.0.0 || ^24.0.0"

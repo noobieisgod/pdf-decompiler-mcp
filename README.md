@@ -78,7 +78,7 @@ See the official [ChatGPT and Codex MCP guide](https://learn.chatgpt.com/docs/ex
 
 ### Claude Windows desktop app
 
-Claude Desktop can install the prebuilt MCPB extension without the global npm installation.
+The preview MCPB bundles Windows x64 dependencies. Its server passed protocol checks, and installation in Claude Desktop is unverified.
 
 1. Download [`pdf-decompiler-mcp-3.1.0.mcpb`](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/download/v3.1.0/pdf-decompiler-mcp-3.1.0.mcpb).
 2. Open **Settings**, select **Extensions**, then open **Advanced settings**.
@@ -248,15 +248,15 @@ The [`evaluation/`](evaluation/) corpus adds two licensed real-world PDFs coveri
 
 CI requires Node.js 22 and 24 on Windows for extraction, geometry, security, cache, packaging, MCP, and available OCR validation. macOS, Linux, and remote Linux OCR jobs remain configured as best-effort coverage. Unexecuted platform-specific behavior is reported as unverified. Tests run only where the host supports drive casing, UNC paths, symlinks, junctions, ACLs, permission denial, process monitoring, and atomic filesystem semantics.
 
-The official MCP TypeScript client 2.0.0 passes the automated protocol suite. MCP Inspector CLI 2.0.0 completes JSON `tools/list` over stdio and exposes all seven input and output schemas. Other Inspector behaviors and external desktop clients remain explicitly partial or untested in [`docs/CLIENT-COMPATIBILITY.md`](docs/CLIENT-COMPATIBILITY.md).
+The official MCP TypeScript client 2.4.0 passes the automated protocol suite. Codex app-server 0.144.4 exercised the packaged server over stdio. See the tested behaviors and desktop UI limitations in [`docs/CLIENT-COMPATIBILITY.md`](docs/CLIENT-COMPATIBILITY.md).
 
 Benchmark output reports one observed cold open, warm open, and search measurement with fixture and runtime details. It does not claim a median or universal latency, accuracy, or token savings. See [`docs/BENCHMARKING.md`](docs/BENCHMARKING.md).
 
 ## Packaging and release status
 
-The repository can build and inspect an npm tarball and MCPB bundle, generate SHA-256 checksums, and produce an SPDX SBOM without publishing. The current supported installation uses the verified GitHub Release tarball or MCPB extension. `package.json` remains private, so `npx pdf-decompiler-mcp` is not advertised until npm publication is separately authorized and completed. Package-name availability and ownership must be checked immediately before that action. A name conflict must be reported and must not trigger an automatic rename or publication under another name.
+The repository can build and inspect an npm tarball and MCPB bundle, generate SHA-256 checksums, and produce an SPDX SBOM without publishing. GitHub Releases provides the verified npm tarball and a Windows x64 MCPB preview. `package.json` remains private. npm registry publication requires separate authorization and an npm name ownership check.
 
-Relicensing and publication remain gated by the ownership, provenance, dependency, native binary, MuPDF, PDF.js, OCR, fixture, bundled asset, model, tokenizer, notice, source-distribution, npm-content, MCPB-content, and SBOM review in [`docs/PROVENANCE.md`](docs/PROVENANCE.md). See [`docs/RELEASE.md`](docs/RELEASE.md) for the complete release gate.
+See [`docs/PROVENANCE.md`](docs/PROVENANCE.md) for the ownership confirmation and MuPDF source archive, and [`docs/RELEASE.md`](docs/RELEASE.md) for release verification.
 
 ## Documentation
 

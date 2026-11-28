@@ -4,6 +4,7 @@ import { CANONICAL_FORMAT_VERSION, EXTRACTION_REVISION } from '../model/canonica
 export const DocumentIdSchema = z.string().regex(/^doc_[a-f0-9]{64}$/);
 export const ExtractionFingerprintSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const SourceIdSchema = z.string().uuid();
+const ResourceUriSchema = z.string().regex(/^pdf-decompiler:\/\//);
 const PageInterval = z.object({ start: z.number().int().min(1).optional(), end: z.number().int().min(1).optional() });
 export const BoundingBoxSchema = z.object({
     x: z.number().finite(),
@@ -118,7 +119,7 @@ export const AssetSchema = z.object({
     height: z.number().nonnegative(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
     deferredRender: z.object({ page: z.number().int().positive(), format: z.enum(['png', 'jpeg']), maxDimension: z.number().int().positive() }).nullable().optional(),
-    uri: z.string().startsWith('pdf-decompiler://'),
+    uri: ResourceUriSchema,
 });
 
 export const FigureElementSchema = z.object({
@@ -274,7 +275,7 @@ const SearchResultSchema = z.object({
 const RenderAssetSchema = z.object({
     id: z.string(), kind: z.string(), documentId: DocumentIdSchema, extractionFingerprint: ExtractionFingerprintSchema,
     mimeType: z.string(), width: z.number().nonnegative(), height: z.number().nonnegative(), data: z.string().optional(),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/), uri: z.string().startsWith('pdf-decompiler://'),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/), uri: ResourceUriSchema,
     enforcement: z.record(z.string(), z.string()),
 });
 
@@ -318,7 +319,7 @@ const DocumentInfoDataSchema = z.object({
     pages: z.array(PageSchema), createdAt: z.string().datetime(), activeSources: z.array(SourceDescriptorSchema),
     counts: z.object({ block: z.number().int().nonnegative(), table: z.number().int().nonnegative(), figure: z.number().int().nonnegative(), annotation: z.number().int().nonnegative(), link: z.number().int().nonnegative() }),
     cache: CacheStatusSchema, resourceLifetime: z.enum(['until_generation_deleted_or_evicted', 'owning_process_and_document_lifetime', 'active_document_lifetime']),
-    exports: z.object({ markdown: z.object({ status: z.enum(['ready', 'generatable', 'partial_generation', 'unavailable_limit']), resourceUri: z.string().startsWith('pdf-decompiler://').nullable() }) }),
+    exports: z.object({ markdown: z.object({ status: z.enum(['ready', 'generatable', 'partial_generation', 'unavailable_limit']), resourceUri: ResourceUriSchema.nullable() }) }),
 });
 const SearchDataSchema = z.object({
     query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']), results: z.array(SearchResultSchema),
@@ -329,7 +330,7 @@ const StructuredPagesDataSchema = z.object({
     outputFormat: z.literal('structured'), mode: z.enum(['text', 'balanced', 'fidelity']), pages: z.array(z.number().int().positive()), elements: z.array(ElementSchema),
 });
 const MarkdownPagesDataSchema = z.object({
-    outputFormat: z.literal('markdown'), markdownFormatVersion: z.literal(1), pages: z.array(z.number().int().positive()), markdown: z.string(), resourceUris: z.array(z.string().startsWith('pdf-decompiler://')),
+    outputFormat: z.literal('markdown'), markdownFormatVersion: z.literal(1), pages: z.array(z.number().int().positive()), markdown: z.string(), resourceUris: z.array(ResourceUriSchema),
     citationRefs: z.array(CitationRefSchema).optional(),
 });
 const PagesDataSchema = z.discriminatedUnion('outputFormat', [StructuredPagesDataSchema, MarkdownPagesDataSchema]);

@@ -2,6 +2,8 @@
 
 ## 3.1.0
 
+- Updated the MCP SDK, Zod, and packaging dependencies to patched versions.
+
 - Phrase search now matches text inside unspaced Chinese and Japanese sentences.
 
 - Decode PDFs that depend on bundled Adobe character maps, including Chinese and Japanese composite fonts.

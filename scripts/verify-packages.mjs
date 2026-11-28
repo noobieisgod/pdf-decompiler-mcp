@@ -42,7 +42,11 @@ try {
     for (const file of npmFiles) await copyRelative(file);
     for (const file of ['package-lock.json', 'manifest.json', '.mcpbignore']) await copyRelative(file);
     await run(process.execPath, [npmCli, 'ci', '--omit=dev', '--ignore-scripts'], { cwd: stage, timeout: 120_000, env: npmEnvironment });
-    await run(process.execPath, [mcpbCli, 'validate', path.join(stage, 'manifest.json')], { cwd: repository });
+    const manifestPath = path.join(stage, 'manifest.json');
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    manifest.compatibility.platforms = [process.platform];
+    await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await run(process.execPath, [mcpbCli, 'validate', manifestPath], { cwd: repository });
     const mcpbFile = path.join(output, `${artifactBase}.mcpb`);
     await run(process.execPath, [mcpbCli, 'pack', stage, mcpbFile], { cwd: repository, timeout: 120_000 });
     await run(process.execPath, [mcpbCli, 'unpack', mcpbFile, unpacked], { cwd: repository, timeout: 120_000 });
@@ -61,7 +65,7 @@ try {
     const checksums = [];
     for (const target of artifacts) checksums.push({ file: path.basename(target), sha256: await sha256(target), bytes: (await fs.stat(target)).size });
     await fs.writeFile(path.join(output, 'checksums.sha256'), `${checksums.map(item => `${item.sha256}  ${item.file}`).join('\n')}\n`);
-    const report = { output, npm: { filename: npmResult.filename, files: npmFiles.length, bytes: npmResult.size }, mcpb: { filename: path.basename(mcpbFile), files: unpackedFiles.length, manifestVersion: '0.4' }, sbom: { filename: path.basename(sbom) }, checksums };
+    const report = { output, npm: { filename: npmResult.filename, files: npmFiles.length, bytes: npmResult.size }, mcpb: { filename: path.basename(mcpbFile), files: unpackedFiles.length, manifestVersion: '0.4', platform: process.platform, arch: process.arch }, sbom: { filename: path.basename(sbom) }, checksums };
     await fs.writeFile(path.join(output, 'package-inspection.json'), `${JSON.stringify(report, null, 2)}\n`);
     console.log(JSON.stringify(report, null, 2));
 } finally {

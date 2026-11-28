@@ -17,10 +17,10 @@ The separate real-world evaluation corpus contains two checked-in PDFs with docu
 
 Package inspection excludes evaluation PDFs, tests, release archives, and development-only tooling.
 
-## Release-blocking attestations
+## v3.1.0 ownership and source distribution
 
-Publication is not cleared until the repository owner confirms ownership or relicensing authority for all pre-3.0 source and identifies any copied or adapted code not already represented by dependency packages. A maintainer must also choose and document how exact MuPDF 1.27.0 Corresponding Source will accompany or remain durably available for every npm and platform-specific MCPB distribution.
+On 2026-11-28, the repository owner confirmed ownership or relicensing authority for all pre-3.0 project source. The competitor evaluation used observed behavior and benchmarks, with project changes implemented independently.
 
-The same review must inspect native canvas binaries and notices on each target platform, verify PDF.js and Tesseract notices, confirm model and tokenizer license files at the pinned commit, and compare npm and MCPB contents against the SBOM. If any ownership or source-distribution requirement cannot be supported, relicensing must not be described as complete and publication must stop.
+The [v3.1.0 GitHub release](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/tag/v3.1.0) distributes the MuPDF Corresponding Source alongside the binaries. The archive starts from [Artifex's 1.27.0 source release](https://github.com/ArtifexSoftware/mupdf-downloads/releases/tag/1.27.0) and replaces `include/mupdf/fitz/version.h` with the version from [the npm package's exact source commit](https://github.com/ArtifexSoftware/mupdf/commit/7956afdc373785865f651fcb76f3112ab1208ba0). That header is the sole source change between the upstream tag and the npm commit. The archive contains the WASM build scripts and upstream third-party sources. The release checksums cover the archive, and both packages include the download link in their third-party notices.
 
-No legal conclusion is inferred from package metadata alone.
+Each later distribution that bundles MuPDF must keep the corresponding source accessible. Review native canvas notices on each target platform, PDF.js and Tesseract notices, model and tokenizer licensing at the pinned revision, and the npm and MCPB contents against the SBOM.

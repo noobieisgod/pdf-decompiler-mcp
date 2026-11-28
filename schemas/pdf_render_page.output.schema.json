@@ -71,7 +71,7 @@
             },
             "uri": {
               "type": "string",
-              "pattern": "^pdf-decompiler:\\/\\/.*"
+              "pattern": "^pdf-decompiler:\\/\\/"
             },
             "enforcement": {
               "type": "object",
@@ -316,13 +316,9 @@
             "type": "string"
           },
           "sourceId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "subtype": {
@@ -434,13 +430,9 @@
       ]
     },
     "nextCursor": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
+      "type": [
+        "string",
+        "null"
       ]
     },
     "completion": {
