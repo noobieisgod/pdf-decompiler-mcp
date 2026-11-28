@@ -42,6 +42,7 @@
     { "name": "pdf_open", "description": "Open, validate, decompose, index, or load a PDF generation." },
     { "name": "pdf_document_info", "description": "Return document, decomposition, cache, warning, and resource-lifetime information." },
     { "name": "pdf_search", "description": "Search with BM25 or optional semantic and hybrid retrieval." },
+    { "name": "pdf_search_documents", "description": "Find cited keyword or phrase matches across open PDFs." },
     { "name": "pdf_get_pages", "description": "Retrieve cited page elements under explicit modes and budgets." },
     { "name": "pdf_get_element", "description": "Resolve one element in an exact extraction generation." },
     { "name": "pdf_render_page", "description": "Render a bounded page or crop as inline image content or an immutable resource." },

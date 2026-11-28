@@ -241,6 +241,14 @@ export const SearchSchema = z.object({
     pages: z.array(z.number().int().min(1)).optional(),
     elementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(), cursor: z.string().min(1).optional(), budget: BudgetSchema,
 });
+export const SearchDocumentsSchema = z.object({
+    documents: z.array(z.object(DocumentReference)).min(2).max(8),
+    query: z.string().trim().min(1).max(512),
+    strategy: z.enum(['full_text', 'phrase']).optional(),
+    elementTypes: SearchSchema.shape.elementTypes,
+    cursor: z.string().min(1).optional(),
+    budget: BudgetSchema,
+});
 export const GetPagesSchema = z.object({
     ...DocumentReference, pages: z.array(z.number().int().min(1)).min(1).optional(), pageRanges: z.array(PageInterval).min(1).optional(),
     mode: z.enum(['text', 'balanced', 'fidelity']).optional(), includeElementTypes: z.array(z.enum(['block', 'table', 'figure', 'annotation', 'link'])).optional(),
@@ -321,10 +329,15 @@ const DocumentInfoDataSchema = z.object({
     cache: CacheStatusSchema, resourceLifetime: z.enum(['until_generation_deleted_or_evicted', 'owning_process_and_document_lifetime', 'active_document_lifetime']),
     exports: z.object({ markdown: z.object({ status: z.enum(['ready', 'generatable', 'partial_generation', 'unavailable_limit']), resourceUri: ResourceUriSchema.nullable() }) }),
 });
+const TextCoverageSchema = z.object({ unprocessedPages: z.number().int().nonnegative(), uncertainPages: z.number().int().nonnegative() });
 const SearchDataSchema = z.object({
     query: z.string(), strategy: z.enum(['full_text', 'semantic', 'hybrid', 'phrase']), results: z.array(SearchResultSchema),
     granularity: z.literal('page').optional(),
-    textCoverage: z.object({ unprocessedPages: z.number().int().nonnegative(), uncertainPages: z.number().int().nonnegative() }),
+    textCoverage: TextCoverageSchema,
+});
+const SearchDocumentsDataSchema = z.object({
+    query: z.string(), strategy: z.enum(['full_text', 'phrase']), results: z.array(SearchResultSchema),
+    documents: z.array(z.object({ ...DocumentReference, ...TextCoverageSchema.shape })),
 });
 const StructuredPagesDataSchema = z.object({
     outputFormat: z.literal('structured'), mode: z.enum(['text', 'balanced', 'fidelity']), pages: z.array(z.number().int().positive()), elements: z.array(ElementSchema),
@@ -357,6 +370,7 @@ export const OutputSchemas = {
     pdf_open: envelope('pdf_open', OpenDataSchema),
     pdf_document_info: envelope('pdf_document_info', DocumentInfoDataSchema),
     pdf_search: envelope('pdf_search', SearchDataSchema),
+    pdf_search_documents: envelope('pdf_search_documents', SearchDocumentsDataSchema),
     pdf_get_pages: envelope('pdf_get_pages', PagesDataSchema),
     pdf_get_element: envelope('pdf_get_element', ElementDataSchema),
     pdf_render_page: envelope('pdf_render_page', RenderAssetSchema),

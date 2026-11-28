@@ -5,7 +5,7 @@ import { CacheManager } from '../cache/cache-manager.mjs';
 import { fingerprint, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
 import { buildCanonicalModel, extractionFingerprint, indexModel, mergeCanonicalModels, modelView } from '../model/canonical.mjs';
-import { BM25_INDEX_VERSION, buildBm25, searchBm25 } from '../search/bm25.mjs';
+import { BM25_INDEX_VERSION, buildBm25, searchBm25, searchBm25AcrossDocuments } from '../search/bm25.mjs';
 import { MARKDOWN_FORMAT_VERSION, MARKDOWN_SERIALIZER_REVISION, serializeElementMarkdown, serializePagedMarkdown } from '../markdown/serializer.mjs';
 import { getFullMarkdownExport, markdownResourceUri } from '../markdown/export.mjs';
 import { buildSemanticIndex, createEmbedder, reciprocalRankFusion, searchSemantic } from '../search/semantic.mjs';
@@ -32,6 +32,24 @@ function sortElements(elements) {
 
 function completeDocument(model) {
     return model.processedPages === model.totalPages && !model.partial;
+}
+
+function textCoverage(model, pages) {
+    const scope = pages ? new Set(pages) : null;
+    const requested = scope ? model.pages.filter(page => scope.has(page.number)) : model.pages;
+    return {
+        unprocessedPages: (scope?.size ?? model.totalPages) - requested.length,
+        uncertainPages: requested.filter(page => page.extractionMode === 'error' || page.ocr.rejectedRegions > 0
+            || (!page.visualSignals.hasText && !page.ocr.accepted && page.visualType !== 'none')).length,
+    };
+}
+
+function searchSelectionBudget(args, budget) {
+    return {
+        ...budget,
+        responseBytes: Math.floor(Math.min(budget.responseBytes, args._wireResponseBytes ?? budget.responseBytes) * 0.65),
+        estimatedTokens: Math.floor(Math.min(budget.estimatedTokens, args._wireEstimatedTokens ?? budget.estimatedTokens) * 0.65),
+    };
 }
 
 function requestedPagesComplete(model, pages) {
@@ -399,12 +417,18 @@ export class DocumentManager {
 
     async withOperation(documentId, generation, callback) {
         const state = await this.requireState(documentId, generation);
-        state.operationCount += 1;
+        return this.withOperations([state], () => callback(state));
+    }
+
+    async withOperations(states, callback) {
+        for (const state of states) state.operationCount += 1;
         try {
-            return await callback(state);
+            return await callback();
         } finally {
-            state.operationCount -= 1;
-            if (state.operationCount === 0) state.operationWaiters.splice(0).forEach(resolve => resolve());
+            for (const state of states) {
+                state.operationCount -= 1;
+                if (state.operationCount === 0) state.operationWaiters.splice(0).forEach(resolve => resolve());
+            }
         }
     }
 
@@ -481,18 +505,9 @@ export class DocumentManager {
             argumentsValue: cursorArguments,
         }) : 0;
         const requestedBudget = resolveBudget(args.budget);
-        const selectionBudget = {
-            ...requestedBudget,
-            responseBytes: Math.min(requestedBudget.responseBytes, Math.floor((args._wireResponseBytes ?? requestedBudget.responseBytes) * 0.65)),
-            estimatedTokens: Math.min(requestedBudget.estimatedTokens, Math.floor((args._wireEstimatedTokens ?? requestedBudget.estimatedTokens) * 0.65)),
-        };
-        const bounded = applyResultBudget(results, selectionBudget, start);
+        const bounded = applyResultBudget(results, searchSelectionBudget(args, requestedBudget), start);
         const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ documentId: state.model.documentId, extractionFingerprint: state.model.extractionFingerprint, operation: 'pdf_search', argumentsValue: cursorArguments, position: bounded.nextOffset });
-        const scopedPages = args.pages ? new Set(args.pages) : null;
-        const requested = scopedPages ? model.pages.filter(page => scopedPages.has(page.number)) : model.pages;
-        const unprocessedPages = (scopedPages?.size ?? model.totalPages) - requested.length;
-        const uncertainPages = requested.filter(page => page.extractionMode === 'error' || page.ocr.rejectedRegions > 0
-            || (!page.visualSignals.hasText && !page.ocr.accepted && page.visualType !== 'none')).length;
+        const { unprocessedPages, uncertainPages } = textCoverage(model, args.pages);
         if (!results.length && (unprocessedPages || uncertainPages)) {
             warnings.push({ code: 'search_text_coverage_incomplete', message: 'Some requested pages were unprocessed or may contain unread text. Inspect page status before treating zero results as absence.' });
         }
@@ -509,6 +524,67 @@ export class DocumentManager {
             nextCursor,
             completion: { documentComplete: completeDocument(model), requestedScopeComplete: unprocessedPages === 0, resultComplete: nextCursor === null },
         };
+        });
+    }
+
+    async searchDocuments(args) {
+        if (this.closing) throw new PdfDecompilerError('closed_document', 'The document manager is closing.');
+        const keys = [...new Set(args.documents.map(({ documentId, extractionFingerprint }) => stateKey(documentId, extractionFingerprint)))].sort();
+        if (keys.length < 2) throw new PdfDecompilerError('invalid_input', 'Select at least two distinct open PDF generations.');
+        const states = keys.map(key => {
+            const state = this.states.get(key);
+            if (!state?.handles.size || state.closing) {
+                throw new PdfDecompilerError('closed_document', 'Every document in the search must have an active source handle.');
+            }
+            return state;
+        });
+        return this.withOperations(states, async () => {
+            const models = states.map(state => state.model);
+            const strategy = args.strategy || 'full_text';
+            const budget = resolveBudget(args.budget);
+            const cursor = {
+                documentId: null,
+                extractionFingerprint: null,
+                operation: 'pdf_search_documents',
+                argumentsValue: {
+                    queryDigest: fingerprint(args.query.normalize('NFKC')), bm25Version: BM25_INDEX_VERSION, strategy, budget,
+                    scope: models.map((model, index) => [keys[index], model.partial ? model.pages.map(page => page.number) : null]),
+                    elementTypes: args.elementTypes || null,
+                },
+            };
+            const start = args.cursor ? this.cursors.decode(args.cursor, cursor) : 0;
+            // Hold each document lease through its index load. Load sequentially to bound I/O.
+            const indexes = [];
+            for (const state of states) {
+                indexes.push(await this.bm25ForSearch(state));
+            }
+            if (states.some((state, index) => state.model !== models[index])) {
+                throw new PdfDecompilerError('changed_search_scope', 'A document changed during search. Start the search again.');
+            }
+            const results = searchBm25AcrossDocuments(indexes, args.query, { phrase: strategy === 'phrase', elementTypes: args.elementTypes });
+            const identity = ({ citation }) => stateKey(citation.documentId, citation.extractionFingerprint);
+            const bounded = applyResultBudget(results, searchSelectionBudget(args, budget), start, {
+                pageKey: item => `${identity(item)}:${item.page}`,
+                omissionId: item => `${identity(item)}:${item.id}`,
+            });
+            if (bounded.nextOffset === start) {
+                throw new PdfDecompilerError('response_budget_exceeded', 'The next search result exceeds the budget. Use a larger budget and restart the search.');
+            }
+            const documents = models.map(({ documentId, extractionFingerprint, ...model }) => ({
+                documentId, extractionFingerprint, ...textCoverage(model),
+            }));
+            const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ ...cursor, position: bounded.nextOffset });
+            const documentComplete = models.every(completeDocument);
+            return {
+                query: args.query, strategy, documents, results: bounded.items,
+                citations: dedupe(bounded.items.flatMap(result => result.citations || [result.citation])),
+                warnings: documents.some(document => document.unprocessedPages || document.uncertainPages)
+                    ? [{ code: 'search_text_coverage_incomplete', message: 'Some pages were unprocessed or may contain unread text. Check each document’s coverage.' }] : [],
+                omissions: bounded.omissions,
+                budget: { configured: budget, usage: bounded.usage, estimators: { text: 'utf8_bytes_divided_by_4' } },
+                nextCursor,
+                completion: { documentComplete, requestedScopeComplete: documentComplete, resultComplete: nextCursor === null },
+            };
         });
     }
 

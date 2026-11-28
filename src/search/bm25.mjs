@@ -95,10 +95,10 @@ export function searchBm25(index, query, options = {}) {
     if (!queryTokens.length) return [];
     const k1 = 1.2;
     const b = 0.75;
-    const total = index.documents.length;
-    const averageLength = Math.max(1, index.averageLength);
+    const { total = index.documents.length, averageLength: meanLength = index.averageLength, documentFrequency = index.documentFrequency } = options.statistics || {};
+    const averageLength = Math.max(1, meanLength);
     const queryWeights = queryTokens.map(token => {
-        const df = Object.hasOwn(index.documentFrequency, token) ? index.documentFrequency[token] : 0;
+        const df = Object.hasOwn(documentFrequency, token) ? documentFrequency[token] : 0;
         return [token, Math.log(1 + ((total - df + 0.5) / (df + 0.5)))];
     });
     const pageSet = options.pages ? new Set(options.pages) : null;
@@ -204,4 +204,23 @@ export function searchBm25(index, query, options = {}) {
         seen.add(key);
         return true;
     });
+}
+
+export function searchBm25AcrossDocuments(indexes, query, options = {}) {
+    const tokens = [...new Set(tokenize(query))];
+    let total = 0;
+    let lengths = 0;
+    const documentFrequency = Object.create(null);
+    for (const index of indexes) {
+        total += index.documents.length;
+        lengths += index.averageLength * index.documents.length;
+        for (const token of tokens) {
+            if (Object.hasOwn(index.documentFrequency, token)) {
+                documentFrequency[token] = (documentFrequency[token] || 0) + index.documentFrequency[token];
+            }
+        }
+    }
+    const statistics = { total, averageLength: lengths / Math.max(1, total), documentFrequency };
+    // Indexes arrive in canonical document order. Stable sort keeps tied results in that order.
+    return indexes.flatMap(index => searchBm25(index, query, { ...options, statistics })).sort((a, b) => b.score - a.score);
 }

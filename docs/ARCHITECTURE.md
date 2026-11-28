@@ -82,6 +82,6 @@ Canonical JSON remains authoritative. Markdown is a deterministic projection sel
 
 ## MCP behavior
 
-All seven tools return a structured envelope and compact JSON text fallback. Rendering returns an inline MCP image only after explicit `imageDelivery: "inline"`. The protocol has no generic negotiated inline-image capability, so `auto` conservatively returns a resource link and a textual URI. Resources are read-only.
+All tools return a structured envelope and compact JSON text fallback. Rendering returns an inline MCP image only after explicit `imageDelivery: "inline"`. The protocol has no generic negotiated inline-image capability, so `auto` conservatively returns a resource link and a textual URI. Resources are read-only.
 
 The stdio entry uses the official server transport from MCP TypeScript SDK 2.0.0. Automated tests cover SDK client discovery and structured results, plus a raw `2025-06-18` initialization. Compatibility claims are limited to the exact versions and behaviors recorded in [Client Compatibility](CLIENT-COMPATIBILITY.md).

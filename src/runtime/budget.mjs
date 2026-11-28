@@ -30,7 +30,7 @@ export function estimatedTextTokens(value) {
     return Math.ceil(Buffer.byteLength(String(value || ''), 'utf8') / 4);
 }
 
-export function applyResultBudget(items, budget, start = 0) {
+export function applyResultBudget(items, budget, start = 0, { pageKey = item => item.page, omissionId = item => item.id } = {}) {
     const selected = [];
     const omissions = [];
     let responseBytes = 0;
@@ -41,7 +41,7 @@ export function applyResultBudget(items, budget, start = 0) {
         const encoded = JSON.stringify(item);
         const bytes = Buffer.byteLength(encoded);
         const tokens = estimatedTextTokens(encoded);
-        const nextPages = new Set(counts.pages).add(item.page);
+        const nextPages = new Set(counts.pages).add(pageKey(item));
         const next = {
             textBlocks: counts.textBlocks + (item.type === 'block' ? 1 : 0),
             tables: counts.tables + (item.type === 'table' ? 1 : 0),
@@ -54,7 +54,7 @@ export function applyResultBudget(items, budget, start = 0) {
                         : next.tables > budget.tables ? 'tables'
                             : next.figures > budget.figures ? 'figures' : null;
         if (reason) {
-            omissions.push({ id: item.id, reason });
+            omissions.push({ id: omissionId(item), reason });
             return {
                 items: selected,
                 omissions,

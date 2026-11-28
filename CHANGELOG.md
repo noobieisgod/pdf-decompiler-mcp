@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Search across two to eight open PDFs in one call, with ranked matches and exact document and page citations.
+
 - Recover tagged table cells in semantic row and column order, including cells nested in untagged marked content.
 - Keep PDF workers inside the Linux memory cap by reducing native allocator reservations and releasing unused page rasters.
 - Pass PDF bytes directly to the isolated extraction worker, avoiding a temporary copy of the source.

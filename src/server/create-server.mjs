@@ -11,12 +11,13 @@ import {
     OpenSchema,
     RenderPageSchema,
     SearchSchema,
+    SearchDocumentsSchema,
     OutputSchemas,
 } from './schemas.mjs';
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const BUDGETED_OPERATIONS = new Set(['pdf_search', 'pdf_get_pages', 'pdf_get_element', 'pdf_render_page']);
-const REDUCIBLE_OPERATIONS = new Set(['pdf_search', 'pdf_get_pages', 'pdf_get_element']);
+const REDUCIBLE_OPERATIONS = new Set(['pdf_search', 'pdf_search_documents', 'pdf_get_pages', 'pdf_get_element']);
+const BUDGETED_OPERATIONS = new Set([...REDUCIBLE_OPERATIONS, 'pdf_render_page']);
 const PROTOCOL_WRAPPER_RESERVE_BYTES = 1024;
 const PROTOCOL_WRAPPER_RESERVE_TOKENS = estimatedTextTokens(' '.repeat(PROTOCOL_WRAPPER_RESERVE_BYTES));
 
@@ -213,6 +214,14 @@ export function createServer(manager) {
         outputSchema: OutputSchemas.pdf_search,
         annotations: READ_ONLY,
     }, toolHandler('pdf_search', args => manager.search(args)));
+
+    server.registerTool('pdf_search_documents', {
+        title: 'Search across open PDFs',
+        description: 'Rank cited keyword or phrase matches across two to eight open PDF generations. Supply each exact document reference from pdf_open. Results identify the PDF, page, and matching elements and report text coverage for each document.',
+        inputSchema: SearchDocumentsSchema,
+        outputSchema: OutputSchemas.pdf_search_documents,
+        annotations: READ_ONLY,
+    }, toolHandler('pdf_search_documents', args => manager.searchDocuments(args)));
 
     server.registerTool('pdf_get_pages', {
         title: 'Get PDF page elements',

@@ -10,6 +10,7 @@ import {
     OpenSchema,
     RenderPageSchema,
     SearchSchema,
+    SearchDocumentsSchema,
     OutputSchemas,
 } from '../src/server/schemas.mjs';
 
@@ -17,6 +18,7 @@ const schemas = {
     'pdf_open.input': OpenSchema,
     'pdf_document_info.input': DocumentInfoSchema,
     'pdf_search.input': SearchSchema,
+    'pdf_search_documents.input': SearchDocumentsSchema,
     'pdf_get_pages.input': GetPagesSchema,
     'pdf_get_element.input': GetElementSchema,
     'pdf_render_page.input': RenderPageSchema,

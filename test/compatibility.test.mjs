@@ -22,7 +22,7 @@ test('automated SDK client compatibility covers discovery, schemas, structured o
     await server.connect(serverTransport);
     const client = new Client({ name: 'compatibility-test', version: '2.0.0' });
     await client.connect(clientTransport);
-    assert.equal((await client.listTools()).tools.length, 7);
+    assert.equal((await client.listTools()).tools.length, 8);
     const result = await client.callTool({ name: 'pdf_document_info', arguments: { documentId: doc, extractionFingerprint: generation } });
     assert.equal(result.structuredContent.schemaVersion, '3.0.0');
     await client.close();

@@ -2279,6 +2279,653 @@
         },
         "operation": {
           "type": "string",
+          "const": "pdf_search_documents"
+        },
+        "documentId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^doc_[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "extractionFingerprint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string"
+                },
+                "strategy": {
+                  "type": "string",
+                  "enum": [
+                    "full_text",
+                    "phrase"
+                  ]
+                },
+                "results": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "page": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "readingOrder": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "score": {
+                        "type": "number"
+                      },
+                      "matchedTerms": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "snippet": {
+                        "type": "string"
+                      },
+                      "citation": {
+                        "type": "object",
+                        "properties": {
+                          "documentId": {
+                            "type": "string",
+                            "pattern": "^doc_[a-f0-9]{64}$"
+                          },
+                          "extractionFingerprint": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                          },
+                          "pageId": {
+                            "type": "string",
+                            "pattern": "^page:\\d+$"
+                          },
+                          "elementId": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "bbox": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "x": {
+                                    "type": "number"
+                                  },
+                                  "y": {
+                                    "type": "number"
+                                  },
+                                  "width": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "height": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0
+                                  }
+                                },
+                                "required": [
+                                  "x",
+                                  "y",
+                                  "width",
+                                  "height"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "documentId",
+                          "extractionFingerprint",
+                          "pageId",
+                          "elementId",
+                          "bbox"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "citations": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "documentId": {
+                              "type": "string",
+                              "pattern": "^doc_[a-f0-9]{64}$"
+                            },
+                            "extractionFingerprint": {
+                              "type": "string",
+                              "pattern": "^[a-f0-9]{64}$"
+                            },
+                            "pageId": {
+                              "type": "string",
+                              "pattern": "^page:\\d+$"
+                            },
+                            "elementId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "bbox": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "x": {
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "type": "number"
+                                    },
+                                    "width": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0
+                                    },
+                                    "height": {
+                                      "type": "number",
+                                      "exclusiveMinimum": 0
+                                    }
+                                  },
+                                  "required": [
+                                    "x",
+                                    "y",
+                                    "width",
+                                    "height"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "documentId",
+                            "extractionFingerprint",
+                            "pageId",
+                            "elementId",
+                            "bbox"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "contributingElementIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "page",
+                      "type",
+                      "readingOrder",
+                      "score",
+                      "matchedTerms",
+                      "snippet",
+                      "citation"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "documents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "documentId": {
+                        "type": "string",
+                        "pattern": "^doc_[a-f0-9]{64}$",
+                        "description": "Identifier derived from the exact PDF bytes."
+                      },
+                      "extractionFingerprint": {
+                        "type": "string",
+                        "pattern": "^[a-f0-9]{64}$",
+                        "description": "Exact extraction generation to resolve."
+                      },
+                      "unprocessedPages": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "uncertainPages": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "documentId",
+                      "extractionFingerprint",
+                      "unprocessedPages",
+                      "uncertainPages"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "query",
+                "strategy",
+                "results",
+                "documents"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "PDF_INVALID_SIGNATURE",
+                            "PDF_TRUNCATED",
+                            "PDF_INVALID_XREF",
+                            "PDF_INVALID_STARTXREF",
+                            "PDF_UNSUPPORTED_ENCRYPTION",
+                            "PDF_PASSWORD_REQUIRED",
+                            "PDF_DECOMPRESSION_LIMIT",
+                            "PDF_PAGE_LIMIT",
+                            "PDF_PARSER_TIMEOUT",
+                            "PDF_PARSER_CRASH",
+                            "PDF_UNSUPPORTED_FEATURE",
+                            "PDF_MALFORMED_UNKNOWN"
+                          ]
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "invalid_pdf_signature",
+                            "truncated_document",
+                            "invalid_cross_reference",
+                            "invalid_startxref",
+                            "unsupported_encryption",
+                            "password_required",
+                            "decompression_limit_exceeded",
+                            "page_limit_exceeded",
+                            "parser_timeout",
+                            "parser_crash",
+                            "unsupported_pdf_feature",
+                            "unknown_malformed_structure"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        },
+                        "requiresPassword": {
+                          "type": "boolean"
+                        },
+                        "requiresConfigurationChange": {
+                          "type": "boolean"
+                        },
+                        "diagnosticId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "category",
+                        "message",
+                        "retryable",
+                        "requiresPassword",
+                        "requiresConfigurationChange"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "MARKDOWN_EXPORT_TOO_LARGE",
+                            "MARKDOWN_SERIALIZATION_TIMEOUT",
+                            "MARKDOWN_SERIALIZATION_MEMORY_LIMIT",
+                            "MARKDOWN_CACHE_WRITE_FAILED",
+                            "MARKDOWN_CHECKSUM_FAILED",
+                            "MARKDOWN_SERIALIZATION_FAILED"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "documentId": {
+                "type": "string",
+                "pattern": "^doc_[a-f0-9]{64}$"
+              },
+              "extractionFingerprint": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "pageId": {
+                "type": "string",
+                "pattern": "^page:\\d+$"
+              },
+              "elementId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "bbox": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "y": {
+                        "type": "number"
+                      },
+                      "width": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "height": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "width",
+                      "height"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "documentId",
+              "extractionFingerprint",
+              "pageId",
+              "elementId",
+              "bbox"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string"
+              },
+              "page": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "elementId": {
+                "type": "string"
+              },
+              "sourceId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "subtype": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "diagnostics": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "enforcement": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "operationId": {
+                  "type": "string"
+                },
+                "timing": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "omissions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "configured": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                },
+                "usage": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                },
+                "estimators": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "configured",
+                "usage",
+                "estimators"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextCursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "completion": {
+          "type": "object",
+          "properties": {
+            "documentComplete": {
+              "type": "boolean"
+            },
+            "requestedScopeComplete": {
+              "type": "boolean"
+            },
+            "resultComplete": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "documentComplete",
+            "requestedScopeComplete",
+            "resultComplete"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "operation",
+        "documentId",
+        "extractionFingerprint",
+        "data",
+        "citations",
+        "warnings",
+        "diagnostics",
+        "omissions",
+        "budget",
+        "nextCursor",
+        "completion"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "3.0.0"
+        },
+        "operation": {
+          "type": "string",
           "const": "pdf_get_pages"
         },
         "documentId": {

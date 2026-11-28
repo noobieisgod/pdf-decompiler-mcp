@@ -57,7 +57,7 @@ Use Codex mode for this local STDIO server. Ordinary Chat mode does not expose l
 2. Open **Settings**, select **MCP servers**, then select **Add server**.
 3. Enter `pdf-decompiler-mcp`, choose **STDIO**, and use `pdf-decompiler-mcp.cmd` as the command.
 4. Add `--allow-root` and the absolute folder containing your PDFs as arguments, for example `C:\Documents\PDFs`.
-5. Save the server, select **Restart**, switch to **Codex**, then type `/mcp` in a new task to confirm that all seven tools are available.
+5. Save the server, select **Restart**, switch to **Codex**, then type `/mcp` in a new task to confirm that the server's tools are available.
 
 You can configure the same server from Codex CLI instead:
 
@@ -105,6 +105,7 @@ The server uses stdio. Protocol messages are written to stdout and diagnostics a
 | `pdf_open` | Validate, decompose, index, resume, or load an exact PDF generation. |
 | `pdf_document_info` | Report metadata, decomposition, diagnostics, cache state, leases, and resource lifetime. |
 | `pdf_search` | Search with deterministic BM25, exact phrase matching, optional semantic retrieval, or reciprocal-rank fusion. |
+| `pdf_search_documents` | Rank cited keyword or phrase matches across two to eight open PDFs. |
 | `pdf_get_pages` | Return selected cited elements as structured data or Markdown in text, balanced, or fidelity mode under explicit budgets. |
 | `pdf_get_element` | Resolve one element, including bounded table slices, only in its expected extraction generation. |
 | `pdf_render_page` | Render a bounded page or crop as PNG or JPEG, returned inline only by explicit request. |

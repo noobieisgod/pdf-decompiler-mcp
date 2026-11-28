@@ -28,6 +28,12 @@ Requires an exact document reference and query. Strategies are `full_text`, `sem
 
 Set `granularity: "page"` with `full_text` or `phrase` for one cited excerpt per page. Page ranking uses exact phrase occurrences, then query terms covered, then the strongest matching element. Use `budget.pages` to limit the number of pages per response. The default ranks individual matching elements.
 
+## `pdf_search_documents`
+
+Pass `documents` with two to eight open document references and a `query` of up to 512 characters. Each reference must include its `documentId` and `extractionFingerprint`. At least two distinct generations must have active source handles. Search uses shared BM25 statistics across the selected documents. The optional `strategy` accepts `full_text` or `phrase`.
+
+Each hit includes an exact citation. The response reports text coverage for each document, and the pages budget counts the same page number in different PDFs separately. Repeat the query and options with `nextCursor` to continue. Extend or close any selected document and start a new search.
+
 ## `pdf_get_pages`
 
 Accepts page numbers or ranges, `text`, `balanced`, or `fidelity` mode, element inclusion and exclusion overrides, budgets, and a cursor. `outputFormat` is `structured` by default or `markdown`. `tableDetail` is `compact` by default or `full`.
