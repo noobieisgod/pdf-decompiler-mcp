@@ -19,8 +19,10 @@ async function exists(target) {
 async function atomicJson(target, value, mode = 0o600) {
     await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
     const temp = `${target}.${process.pid}.${randomUUID()}.tmp`;
-    await fs.writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { mode });
+    const json = `${JSON.stringify(value, null, 2)}\n`;
+    await fs.writeFile(temp, json, { mode });
     await fs.rename(temp, target);
+    return json;
 }
 
 function processAlive(pid) {
@@ -199,15 +201,20 @@ export class CacheManager {
             const staging = `${destination}.staging-${process.pid}-${randomUUID()}`;
             await fs.mkdir(path.join(staging, 'assets'), { recursive: true, mode: 0o700 });
             const persistedAssets = [];
+            const assetHashes = {};
             for (const asset of model.assets) {
                 const extension = asset.mimeType === 'image/jpeg' ? 'jpg' : 'png';
                 const filename = asset.data ? `${sha256(asset.id).slice(0, 24)}.${extension}` : null;
-                if (filename) await fs.writeFile(path.join(staging, 'assets', filename), Buffer.from(asset.data, 'base64'), { mode: 0o600 });
+                if (filename) {
+                    const bytes = Buffer.from(asset.data, 'base64');
+                    await fs.writeFile(path.join(staging, 'assets', filename), bytes, { mode: 0o600 });
+                    assetHashes[`assets/${filename}`] = sha256(bytes);
+                }
                 persistedAssets.push({ ...asset, data: undefined, filename });
             }
             const persistedModel = { ...model, assets: persistedAssets };
             await fs.writeFile(path.join(staging, 'source.pdf'), pdfBytes, { mode: 0o600 });
-            await atomicJson(path.join(staging, 'canonical.json'), persistedModel);
+            const canonicalHash = sha256(await atomicJson(path.join(staging, 'canonical.json'), persistedModel));
             if (bm25) await atomicJson(path.join(staging, 'bm25.json'), bm25);
             if (semantic) await atomicJson(path.join(staging, 'semantic.json'), semantic);
             const manifest = {
@@ -221,12 +228,10 @@ export class CacheManager {
                 pdfSha256: model.pdfSha256,
                 files: {
                     'source.pdf': sha256(pdfBytes),
-                    'canonical.json': sha256(await fs.readFile(path.join(staging, 'canonical.json'))),
+                    'canonical.json': canonicalHash,
+                    ...assetHashes,
                 },
             };
-            for (const asset of persistedAssets) {
-                if (asset.filename) manifest.files[`assets/${asset.filename}`] = sha256(await fs.readFile(path.join(staging, 'assets', asset.filename)));
-            }
             await atomicJson(path.join(staging, 'manifest.json'), manifest);
             await fs.mkdir(path.dirname(destination), { recursive: true, mode: 0o700 });
             await fs.rename(staging, destination);
@@ -239,18 +244,27 @@ export class CacheManager {
         return path.join(this.root, 'tombstones', `${documentId}-${generation}.json`);
     }
 
-    async loadGeneration(documentId, generation, { loadBm25 = true } = {}) {
+    async loadGeneration(documentId, generation, { loadBm25 = true, sourceBytes = null } = {}) {
         const root = this.generationPath(documentId, generation);
         const manifest = await fs.readFile(path.join(root, 'manifest.json'), 'utf8').then(JSON.parse, () => null);
         if (!manifest || manifest.version !== 4 || manifest.canonicalFormatVersion !== 4
             || manifest.documentId !== documentId || manifest.extractionFingerprint !== generation) return null;
-        const canonicalBytes = await fs.readFile(path.join(root, 'canonical.json')).catch(() => null);
-        if (!canonicalBytes || sha256(canonicalBytes) !== manifest.files['canonical.json']) {
-            await this.deleteGeneration(documentId, generation, { ignoreMissing: true, reason: 'corrupt' });
+        const corrupt = async () => {
+            await this.deleteGeneration(documentId, generation, { ignoreMissing: true, reason: 'corrupt' }).catch(error => {
+                if (error.code !== 'CACHE_GENERATION_IN_USE') throw error;
+            });
             return null;
-        }
+        };
+        const canonicalBytes = await fs.readFile(path.join(root, 'canonical.json')).catch(() => null);
+        if (!canonicalBytes || sha256(canonicalBytes) !== manifest.files?.['canonical.json']) return corrupt();
         const model = JSON.parse(canonicalBytes.toString('utf8'));
         if (model.canonicalFormatVersion !== CANONICAL_FORMAT_VERSION || model.extractionRevision !== EXTRACTION_REVISION) return null;
+        const pdfHash = documentId.slice('doc_'.length);
+        if (model.documentId !== documentId || model.extractionFingerprint !== generation || model.pdfSha256 !== pdfHash
+            || manifest.files['source.pdf'] !== pdfHash) return corrupt();
+        // A source open already hashed its input to obtain documentId.
+        const pdfBytes = sourceBytes ?? await fs.readFile(path.join(root, 'source.pdf')).catch(() => null);
+        if (!pdfBytes || (!sourceBytes && sha256(pdfBytes) !== pdfHash)) return corrupt();
         for (const asset of model.assets) {
             if (!asset.filename) {
                 asset.data = null;
@@ -259,10 +273,7 @@ export class CacheManager {
             const assetPath = path.join(root, 'assets', asset.filename);
             const bytes = await fs.readFile(assetPath).catch(() => null);
             const expected = manifest.files[`assets/${asset.filename}`];
-            if (!bytes || !expected || sha256(bytes) !== expected) {
-                await this.deleteGeneration(documentId, generation, { ignoreMissing: true, reason: 'corrupt' });
-                return null;
-            }
+            if (!bytes || !expected || sha256(bytes) !== expected) return corrupt();
             asset.data = bytes.toString('base64');
         }
         manifest.lastAccessedAt = Date.now();
@@ -270,7 +281,7 @@ export class CacheManager {
         const bm25 = loadBm25 ? await this.loadBm25Index(documentId, generation) : null;
         const semantic = await fs.readFile(this.semanticPath(documentId, generation), 'utf8').then(JSON.parse, () =>
             fs.readFile(path.join(root, 'semantic.json'), 'utf8').then(JSON.parse, () => null));
-        return { model, pdfBytes: await fs.readFile(path.join(root, 'source.pdf')), bm25, semantic };
+        return { model, pdfBytes, bm25, semantic };
     }
 
     async saveDerivedMarkdown(documentId, generation, serializerFingerprint, sourcePath, metadata) {
@@ -457,6 +468,6 @@ export class CacheManager {
 
     async close() {
         for (const leaseId of [...this.leases.keys()]) await this.releaseLease(leaseId);
-        if (this.mode !== 'persistent') await fs.rm(this.root, { recursive: true, force: true });
+        if (this.mode !== 'persistent') await fs.rm(this.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
 }

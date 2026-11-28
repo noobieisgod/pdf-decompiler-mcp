@@ -273,7 +273,7 @@ export class DocumentManager {
             return this.openResult(active, descriptor, scope);
         }
         if (!args.refresh && this.config.cache.mode === 'persistent') {
-            const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
+            const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false, sourceBytes: loaded.bytes });
             if (cached) {
                 const state = await this.activate(cached.model, cached.pdfBytes, { persisted: true, semantic: cached.semantic, extractionConfig });
                 this.addSourceHandle(state, descriptor);
@@ -860,12 +860,14 @@ export class DocumentManager {
                 throw new PdfDecompilerError(codes[reason] || (current && current !== generation ? 'stale_extraction_fingerprint' : 'cache_generation_missing'), 'The extraction generation is unavailable.');
             }
             temporaryLease = await this.cache.acquireLease(documentId, generation);
-            const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
-            if (!cached) {
+            try {
+                const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
+                if (!cached) throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
+                state = { model: cached.model, pdfBytes: cached.pdfBytes, indexes: indexModel(cached.model), derivedAssets: new Map() };
+            } catch (error) {
                 await this.cache.releaseLease(temporaryLease);
-                throw new PdfDecompilerError('cache_generation_missing', 'The extraction generation is unavailable.');
+                throw error;
             }
-            state = { model: cached.model, pdfBytes: cached.pdfBytes, indexes: indexModel(cached.model), derivedAssets: new Map() };
         }
         try {
             if (kind === 'markdown') {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { CacheManager } from '../src/cache/cache-manager.mjs';
 import { buildCanonicalModel } from '../src/model/canonical.mjs';
+import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { buildBm25 } from '../src/search/bm25.mjs';
 import { rawDocument, temporaryConfig } from './helpers.mjs';
 
@@ -67,4 +68,28 @@ test('process-local cache modes never use the configured persistent tree and rem
     await assert.rejects(fs.access(oneRoot));
     await fs.access(twoRoot);
     await two.close();
+});
+
+test('cache restores the verified source or rejects a damaged source copy', async t => {
+    const { config } = await temporaryConfig(t, { cacheMode: 'persistent' });
+    const cache = await new CacheManager(config).init();
+    t.after(() => cache.close());
+    const model = modelWithAsset();
+    const { documentId, extractionFingerprint } = model;
+    const pdf = Buffer.from('%PDF-cache');
+    const root = await cache.saveGeneration(model, pdf);
+    await fs.writeFile(path.join(root, 'source.pdf'), '%PDF-other');
+    const loaded = await cache.loadGeneration(documentId, extractionFingerprint, { sourceBytes: pdf });
+    assert.equal(loaded.pdfBytes, pdf);
+    const lease = await cache.acquireLease(documentId, extractionFingerprint);
+    assert.equal(await cache.loadGeneration(documentId, extractionFingerprint), null);
+    assert.equal(await cache.generationExists(documentId, extractionFingerprint), true);
+    await cache.releaseLease(lease);
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const uri = `pdf-decompiler://document/${documentId}/${extractionFingerprint}/canonical/document.json`;
+    await assert.rejects(manager.readResource(uri), { code: 'cache_generation_missing' });
+    assert.equal(await cache.activeLeases(documentId, extractionFingerprint), 0);
+    assert.equal(await cache.loadGeneration(documentId, extractionFingerprint), null);
+    assert.equal(await cache.unavailableReason(documentId, extractionFingerprint), 'corrupt');
 });
