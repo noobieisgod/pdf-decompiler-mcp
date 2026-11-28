@@ -1,5 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
+import pkg from '../../package.json' with { type: 'json' };
 
 const parseBoolean = value => value === '1' || value === 'true';
 
@@ -49,7 +50,7 @@ export function loadConfig(overrides = {}) {
     if (!['auto', 'off', 'required'].includes(ocrPolicy)) throw new Error('ocrPolicy must be auto, off, or required');
     const config = {
         schemaVersion: '3.0.0',
-        extractorVersion: '3.0.0',
+        extractorVersion: pkg.version,
         ocrPolicy,
         allowRoots: overrides.allowRoots ?? parseJsonArray(env.PDF_DECOMPILER_ALLOW_ROOTS_JSON, 'PDF_DECOMPILER_ALLOW_ROOTS_JSON'),
         denyRoots: overrides.denyRoots ?? parseJsonArray(env.PDF_DECOMPILER_DENY_ROOTS_JSON, 'PDF_DECOMPILER_DENY_ROOTS_JSON'),

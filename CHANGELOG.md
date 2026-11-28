@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 3.1.0
 
 - Phrase search now matches text inside unspaced Chinese and Japanese sentences.
 

@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import { run } from './lib/process.mjs';
 
 const repository = path.resolve('.');
+const { name, version } = JSON.parse(await fs.readFile('package.json', 'utf8'));
+const artifactBase = `${name}-${version}`;
 const output = path.resolve(process.argv[2] || path.join(repository, 'artifacts'));
 const work = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf-decompiler-package-'));
 const stage = path.join(work, 'mcpb-stage');
@@ -41,7 +43,7 @@ try {
     for (const file of ['package-lock.json', 'manifest.json', '.mcpbignore']) await copyRelative(file);
     await run(process.execPath, [npmCli, 'ci', '--omit=dev', '--ignore-scripts'], { cwd: stage, timeout: 120_000, env: npmEnvironment });
     await run(process.execPath, [mcpbCli, 'validate', path.join(stage, 'manifest.json')], { cwd: repository });
-    const mcpbFile = path.join(output, 'pdf-decompiler-mcp-3.0.0.mcpb');
+    const mcpbFile = path.join(output, `${artifactBase}.mcpb`);
     await run(process.execPath, [mcpbCli, 'pack', stage, mcpbFile], { cwd: repository, timeout: 120_000 });
     await run(process.execPath, [mcpbCli, 'unpack', mcpbFile, unpacked], { cwd: repository, timeout: 120_000 });
     const unpackedFiles = (await fs.readdir(unpacked, { recursive: true })).map(file => file.replaceAll('\\', '/'));
@@ -53,7 +55,7 @@ try {
     const prohibitedMcpb = unpackedFiles.filter(file => /(?:^|\/)(?:test|scripts|\.git)(?:\/|$)|\.(?:pdf|zip|tgz)$/i.test(file));
     if (prohibitedMcpb.length) throw new Error(`Prohibited MCPB files: ${prohibitedMcpb.join(', ')}`);
 
-    const sbom = path.join(output, 'pdf-decompiler-mcp-3.0.0.spdx.json');
+    const sbom = path.join(output, `${artifactBase}.spdx.json`);
     await run(process.execPath, [path.join(repository, 'scripts', 'generate-sbom.mjs'), sbom], { cwd: stage });
     const artifacts = [npmTarball, mcpbFile, sbom];
     const checksums = [];

@@ -25,7 +25,7 @@ const document = {
     spdxVersion: 'SPDX-2.3',
     dataLicense: 'CC0-1.0',
     SPDXID: 'SPDXRef-DOCUMENT',
-    name: 'pdf-decompiler-mcp-3.0.0',
+    name: `${lock.name}-${lock.version}`,
     documentNamespace: `https://github.com/noobieisgod/PDF-Decompiler-MCP/sbom/${randomUUID()}`,
     creationInfo: { created: new Date().toISOString(), creators: ['Tool: scripts/generate-sbom.mjs'] },
     documentDescribes: packages.map(item => item.SPDXID),

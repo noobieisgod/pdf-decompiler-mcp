@@ -35,13 +35,13 @@ I do not have an Apple or Linux machine for direct local validation. GitHub Acti
 
 IMPORTANT: PDF Decompiler MCP can access only files inside directories configured with `--allow-root` by default. Add every directory the client needs, or requests outside those roots will be denied. The `--unrestricted-local-access` flag or `PDF_DECOMPILER_UNRESTRICTED_LOCAL_ACCESS=true` grants broad local-file access and should be enabled only intentionally. Configured deny roots still take precedence.
 
-Paste this complete block into PowerShell. It installs Node.js 24 LTS, Tesseract OCR, and PDF Decompiler MCP 3.0.0 from the verified GitHub Release package. Replace the final path with the folder containing the PDFs you want the server to access.
+Paste this complete block into PowerShell. It installs Node.js 24 LTS, Tesseract OCR, and PDF Decompiler MCP 3.1.0 from GitHub Releases. Replace the final path with the folder containing the PDFs you want the server to access.
 
 ```powershell
 winget install --id OpenJS.NodeJS.LTS --exact --source winget --accept-package-agreements --accept-source-agreements
 winget install --id UB-Mannheim.TesseractOCR --exact --source winget --accept-package-agreements --accept-source-agreements
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-npm.cmd install --global "https://github.com/noobieisgod/PDF-Decompiler-MCP/releases/download/Release_V3.0/pdf-decompiler-mcp-3.0.0.tgz"
+npm.cmd install --global "https://github.com/noobieisgod/pdf-decompiler-mcp/releases/download/v3.1.0/pdf-decompiler-mcp-3.1.0.tgz"
 (Get-Command pdf-decompiler-mcp.cmd).Source
 pdf-decompiler-mcp.cmd doctor --cache-mode none --allow-root "C:\Documents\PDFs"
 ```
@@ -80,7 +80,7 @@ See the official [ChatGPT and Codex MCP guide](https://learn.chatgpt.com/docs/ex
 
 Claude Desktop can install the prebuilt MCPB extension without the global npm installation.
 
-1. Download [`pdf-decompiler-mcp-3.0.0.mcpb`](https://github.com/noobieisgod/PDF-Decompiler-MCP/releases/download/Release_V3.0/pdf-decompiler-mcp-3.0.0.mcpb).
+1. Download [`pdf-decompiler-mcp-3.1.0.mcpb`](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/download/v3.1.0/pdf-decompiler-mcp-3.1.0.mcpb).
 2. Open **Settings**, select **Extensions**, then open **Advanced settings**.
 3. Select **Install Extension**, choose the downloaded MCPB file, and select the folders Claude may access when prompted.
 4. Start a new conversation. If the tools do not appear, fully quit and reopen Claude Desktop, then check the **Connectors** menu beside the chat input.

@@ -3,8 +3,13 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
+const lock = JSON.parse(await fs.readFile('package-lock.json', 'utf8'));
+const manifest = JSON.parse(await fs.readFile('manifest.json', 'utf8'));
 assert.equal(packageJson.name, 'pdf-decompiler-mcp');
-assert.equal(packageJson.version, '3.0.0');
+assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
+assert.equal(lock.version, packageJson.version);
+assert.equal(lock.packages[''].version, packageJson.version);
+assert.equal(manifest.version, packageJson.version);
 assert.equal(packageJson.license, 'AGPL-3.0-only');
 assert.equal(packageJson.engines.node, '^22.0.0 || ^24.0.0');
 assert.deepEqual(Object.keys(packageJson.bin), ['pdf-decompiler-mcp']);

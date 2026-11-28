@@ -1,6 +1,6 @@
 # Architecture
 
-PDF Decompiler MCP 3.0.0 is a native ESM, local stdio server. It uses the official MCP TypeScript SDK v2 packages, a hybrid MuPDF and PDF.js extractor, a canonical generation model, a content-addressed cache, and bounded retrieval.
+PDF Decompiler MCP is a native ESM, local stdio server. It uses the official MCP TypeScript SDK v2 packages, a hybrid MuPDF and PDF.js extractor, a canonical generation model, a content-addressed cache, and bounded retrieval.
 
 ## Processing flow
 
