@@ -30,6 +30,8 @@ Block roles are `heading`, `text`, `list`, or `code`. OCR origin is represented 
 
 Extraction revision 14 can render a rejected small raster page again at a higher resolution. Both attempts share the OCR time limit, and accepted citations use the original page coordinates.
 
+Extraction revision 15 estimates slight skew on scanned pages from the alignment of dark pixels. It tries the straightened image within the OCR budget and maps accepted text boxes back to the original page.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

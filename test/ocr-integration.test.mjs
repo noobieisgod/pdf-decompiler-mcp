@@ -7,6 +7,7 @@ import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
+import { createCanvas, fillCanvasWhite } from '../src/pdf/canvas.mjs';
 import { buildGermanScan, buildRasterScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
 
@@ -101,6 +102,42 @@ test('full-page OCR reads scanned columns separately and cites their text', { sk
         const [right] = (await manager.search({ ...opened, query: 'Right column one', strategy: 'phrase' })).results;
         assert.ok(left.citation.bbox.x + left.citation.bbox.width < raster.width / 2);
         assert.ok(right.citation.bbox.x > raster.width / 2);
+    }
+});
+
+test('OCR straightens skewed scans and cites the text on the original page', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/scan-readable.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const original = renderMupdfPageToCanvas(document, 1, { width: 900, height: 1165 });
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    for (const degrees of [-7, 7]) {
+        const { width, height } = original;
+        const raster = createCanvas(width, height);
+        const ctx = fillCanvasWhite(raster);
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(degrees * Math.PI / 180);
+        ctx.drawImage(original, -width / 2, -height / 2);
+        const source = path.join(root, `skewed-${degrees}.pdf`);
+        await fs.writeFile(source, buildRasterScan(raster));
+        const opened = await manager.open({ source });
+        const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+        assert.match(elements.filter(element => element.textSource === 'ocr').map(element => element.text).join(' '), /OCR SUCCESS TEXT/);
+        const [hit] = (await manager.search({ ...opened, query: 'DETERMINISTIC EVIDENCE', strategy: 'phrase' })).results;
+        const box = hit.citation.bbox;
+        assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
+        const { data } = ctx.getImageData(0, 0, width, height);
+        let ink = 0;
+        let covered = 0;
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                if (data[(y * width + x) * 4] >= 128) continue;
+                ink++;
+                if (x >= box.x && y >= box.y && x < box.x + box.width && y < box.y + box.height) covered++;
+            }
+        }
+        assert.ok(ink > 0 && covered / ink > 0.45, `page at ${degrees}° citation covers visible text`);
     }
 });
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Straighten slightly skewed scans for OCR while preserving original page citations.
 - Retry OCR at a higher resolution on small scanned pages.
 - Keep high-confidence numbers searchable on numeric-heavy scans.
 - Read scanned columns separately and cite each column's text in its own region.

@@ -4,6 +4,7 @@ import { classifyRenderFailure, cropPlacementFromCanvas, encodePageImage, isKnow
 import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
 import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
+import { runDeskewedOcr } from './ocr-deskew.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
@@ -85,12 +86,19 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                 cachedFullCanvas = await renderFullPageCanvas();
                 const maxOcrDim = Math.min(maxImageDim ?? 1400, 1400);
                 const deadline = Date.now() + OCR_TIMEOUT_MS;
-                const recognize = async canvas => runTesseractOcr(Buffer.from(await canvas.encode('png')), pageNum, {
-                    pixelWidth: canvas.width,
-                    pixelHeight: canvas.height,
-                    pageWidth: viewport.width,
-                    pageHeight: viewport.height,
-                }, ocrLanguages, deadline);
+                const recognize = async canvas => {
+                    const geometry = {
+                        pixelWidth: canvas.width,
+                        pixelHeight: canvas.height,
+                        pageWidth: viewport.width,
+                        pageHeight: viewport.height,
+                    };
+                    if (pageProfile.visualType === 'raster') {
+                        const corrected = await runDeskewedOcr(canvas, pageNum, geometry, ocrLanguages, deadline).catch(() => null);
+                        if (corrected) return corrected;
+                    }
+                    return runTesseractOcr(await canvas.encode('png'), pageNum, geometry, ocrLanguages, deadline);
+                };
                 let ocrResult = await recognize(scaleCanvas(cachedFullCanvas, maxOcrDim));
                 const retryScale = maxOcrDim / Math.max(viewport.width, viewport.height);
                 if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster'
