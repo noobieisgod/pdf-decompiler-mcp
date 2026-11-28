@@ -8,6 +8,9 @@ import { PdfDecompilerError } from '../core/errors.mjs';
 import { isParserErrorPayload, parserErrorPayload } from './parser-errors.mjs';
 
 const execFileAsync = promisify(execFile);
+// V8's trap-handler guard reservations exceed the Linux worker address-space limit.
+const boundedWasmFlags = process.allowedNodeEnvironmentFlags.has('--disable-wasm-trap-handler')
+    ? ['--disable-wasm-trap-handler'] : [];
 
 function parserFailure(code, details = {}) {
     const parser = parserErrorPayload(code, details.diagnosticId);
@@ -68,7 +71,7 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     const usePrlimit = await linuxPrlimitAvailable();
     const command = usePrlimit ? '/usr/bin/prlimit' : process.execPath;
     const args = usePrlimit
-        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, worker, input, output, workerOptions]
+        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, input, output, workerOptions]
         : [worker, input, output, workerOptions];
     const enforcement = {
         wallClock: 'hard-runtime-termination',
@@ -123,7 +126,7 @@ export async function runRenderSubprocess(pdfBytes, config, options) {
     const usePrlimit = await linuxPrlimitAvailable();
     const command = usePrlimit ? '/usr/bin/prlimit' : process.execPath;
     const args = usePrlimit
-        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, worker, input, output, JSON.stringify(options)]
+        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, input, output, JSON.stringify(options)]
         : [worker, input, output, JSON.stringify(options)];
     const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let stderr = '';

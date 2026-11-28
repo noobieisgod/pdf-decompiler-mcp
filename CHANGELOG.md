@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add selected pages to an active PDF without loading the source again or opening another handle.
+- Use explicit WebAssembly bounds checks in memory-limited Linux workers so MuPDF can start within the address-space limit.
 
 ## 3.1.0
 

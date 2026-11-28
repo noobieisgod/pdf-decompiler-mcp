@@ -21,9 +21,12 @@ test('permission-denied roots fail without widening access', { skip: process.pla
     const denied = path.join(root, 'permission-denied');
     await fs.mkdir(denied, { mode: 0o700 });
     await fs.chmod(denied, 0o500);
-    t.after(() => fs.chmod(denied, 0o700));
-    const cache = new CacheManager({ ...config, cache: { ...config.cache, directory: denied } });
-    await assert.rejects(cache.init());
+    try {
+        const cache = new CacheManager({ ...config, cache: { ...config.cache, directory: denied } });
+        await assert.rejects(cache.init());
+    } finally {
+        await fs.chmod(denied, 0o700);
+    }
 });
 
 test('failed child processing removes its owner-restricted temporary directory', async t => {
