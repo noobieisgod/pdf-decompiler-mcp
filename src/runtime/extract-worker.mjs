@@ -1,6 +1,5 @@
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { extractPageContent } from '../extract/document.mjs';
 import { detectTesseract } from '../extract/ocr.mjs';
 import { classifyParserFailure, parserErrorPayload } from './parser-errors.mjs';
 
@@ -32,6 +31,7 @@ async function main() {
     const options = JSON.parse(optionsJson);
     if (options.ocrPolicy === 'required' && !detectTesseract()) throw new Error('Tesseract is required by the OCR policy but is not available on PATH');
     const bytes = await fs.readFile(inputPath);
+    const { extractPageContent } = await import('../extract/document.mjs');
     const result = await extractPageContent(bytes, options.pages, options.maxImageDim, {
         maxPages: options.maxPages,
         timeBudgetMs: options.timeBudgetMs,

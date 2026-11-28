@@ -48,6 +48,8 @@ test('parent worker-result handling contains missing, malformed, and unknown fai
         const value = publicError(error);
         return value.code === 'PDF_PARSER_CRASH' && !JSON.stringify(value).includes('stderr');
     });
+    await fs.writeFile(output, 'null');
+    await assert.rejects(readExtractionWorkerResult({ output, exitCode: 0, config, enforcement }), { code: 'PDF_PARSER_CRASH' });
     await fs.writeFile(output, JSON.stringify({ ok: false, error: { code: 'PDF_BACKEND_RANDOM', message: 'raw' } }));
     await assert.rejects(readExtractionWorkerResult({ output, exitCode: 1, config, enforcement }), error => publicError(error).code === 'PDF_PARSER_CRASH');
     const structured = parserErrorPayload('PDF_INVALID_XREF');

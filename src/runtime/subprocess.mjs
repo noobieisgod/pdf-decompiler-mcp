@@ -18,21 +18,26 @@ function parserFailure(code, details = {}) {
 }
 
 export async function readExtractionWorkerResult({ output, exitCode, stderr = '', config, enforcement }) {
+    const crashed = () => {
+        if (config.debug && stderr) console.error('[pdf-parser-worker]', stderr);
+        return parserFailure('PDF_PARSER_CRASH', { enforcement });
+    };
     const stat = await fs.stat(output).catch(() => null);
-    if (!stat || stat.size > Math.min(256 * 1024 * 1024, config.maxDecompressedBytes)) throw parserFailure('PDF_PARSER_CRASH', { enforcement });
+    if (!stat || stat.size > Math.min(256 * 1024 * 1024, config.maxDecompressedBytes)) throw crashed();
     let payload;
     try {
         payload = JSON.parse(await fs.readFile(output, 'utf8'));
     } catch {
-        if (config.debug && stderr) console.error('[pdf-parser-worker]', stderr);
-        throw parserFailure('PDF_PARSER_CRASH', { enforcement });
+        throw crashed();
     }
-    if (!payload.ok || exitCode !== 0) {
-        if (config.debug && stderr) console.error('[pdf-parser-worker]', stderr);
-        if (isParserErrorPayload(payload.error)) throw new PdfDecompilerError(payload.error.code, payload.error.message, { parser: payload.error, enforcement });
-        throw parserFailure('PDF_PARSER_CRASH', { enforcement });
+    if (payload?.ok !== true || exitCode !== 0) {
+        if (isParserErrorPayload(payload?.error)) {
+            if (config.debug && stderr) console.error('[pdf-parser-worker]', stderr);
+            throw new PdfDecompilerError(payload.error.code, payload.error.message, { parser: payload.error, enforcement });
+        }
+        throw crashed();
     }
-    if (!payload.result || !Array.isArray(payload.result.pages) || !Number.isInteger(payload.result.totalPages)) throw parserFailure('PDF_PARSER_CRASH', { enforcement });
+    if (!payload.result || !Array.isArray(payload.result.pages) || !Number.isInteger(payload.result.totalPages)) throw crashed();
     return payload.result;
 }
 

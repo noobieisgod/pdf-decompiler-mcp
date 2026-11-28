@@ -30,9 +30,9 @@ test('permission-denied roots fail without widening access', { skip: process.pla
 });
 
 test('failed child processing removes its owner-restricted temporary directory', async t => {
-    const { config } = await temporaryConfig(t, { extractionTimeoutMs: 5000 });
-    const before = new Set((await fs.readdir(os.tmpdir())).filter(name => name.startsWith('pdf-decompiler-extract-')));
+    const { root, config } = await temporaryConfig(t, { extractionTimeoutMs: 5000 });
+    t.mock.method(os, 'tmpdir', () => root);
     await assert.rejects(runExtractionSubprocess(Buffer.from('%PDF-malformed'), config), { code: 'PDF_MALFORMED_UNKNOWN' });
-    const after = (await fs.readdir(os.tmpdir())).filter(name => name.startsWith('pdf-decompiler-extract-') && !before.has(name));
+    const after = (await fs.readdir(root)).filter(name => name.startsWith('pdf-decompiler-extract-'));
     assert.deepEqual(after, []);
 });

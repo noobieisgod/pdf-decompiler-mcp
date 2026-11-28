@@ -28,6 +28,11 @@ jobs:
       - run: npm run evaluation:verify
       - run: npm run test:local-pdfs
       - run: npm run check
+      - name: Diagnose Linux PDF failures
+        if: failure() && runner.os == 'Linux'
+        run: npm run test:local-pdfs
+        env:
+          PDF_DECOMPILER_DEBUG: "1"
 
   linux-ocr:
     runs-on: ubuntu-latest
