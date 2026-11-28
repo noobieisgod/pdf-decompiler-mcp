@@ -597,7 +597,7 @@
                 },
                 "extractionRevision": {
                   "type": "number",
-                  "const": 19
+                  "const": 20
                 },
                 "documentId": {
                   "type": "string",
@@ -3828,7 +3828,8 @@
                                 "type": "string",
                                 "enum": [
                                   "embedded_image",
-                                  "page_visual"
+                                  "page_visual",
+                                  "vector_region"
                                 ]
                               },
                               "caption": {
@@ -3906,6 +3907,32 @@
                                             "type": "integer",
                                             "exclusiveMinimum": 0,
                                             "maximum": 9007199254740991
+                                          },
+                                          "bbox": {
+                                            "type": "object",
+                                            "properties": {
+                                              "x": {
+                                                "type": "number"
+                                              },
+                                              "y": {
+                                                "type": "number"
+                                              },
+                                              "width": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0
+                                              },
+                                              "height": {
+                                                "type": "number",
+                                                "exclusiveMinimum": 0
+                                              }
+                                            },
+                                            "required": [
+                                              "x",
+                                              "y",
+                                              "width",
+                                              "height"
+                                            ],
+                                            "additionalProperties": false
                                           }
                                         },
                                         "required": [
@@ -5896,7 +5923,8 @@
                           "type": "string",
                           "enum": [
                             "embedded_image",
-                            "page_visual"
+                            "page_visual",
+                            "vector_region"
                           ]
                         },
                         "caption": {
@@ -5974,6 +6002,32 @@
                                       "type": "integer",
                                       "exclusiveMinimum": 0,
                                       "maximum": 9007199254740991
+                                    },
+                                    "bbox": {
+                                      "type": "object",
+                                      "properties": {
+                                        "x": {
+                                          "type": "number"
+                                        },
+                                        "y": {
+                                          "type": "number"
+                                        },
+                                        "width": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0
+                                        },
+                                        "height": {
+                                          "type": "number",
+                                          "exclusiveMinimum": 0
+                                        }
+                                      },
+                                      "required": [
+                                        "x",
+                                        "y",
+                                        "width",
+                                        "height"
+                                      ],
+                                      "additionalProperties": false
                                     }
                                   },
                                   "required": [

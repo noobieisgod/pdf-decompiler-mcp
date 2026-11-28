@@ -77,6 +77,26 @@ export function buildSyntheticPdf({ pages = ['Synthetic PDF fixture'], rotate = 
     })));
 }
 
+export function buildVectorChartPdf() {
+    return buildFixturePdf([{
+        graphics: '100 300 m 100 520 l S 100 300 m 460 300 l S 100 300 m 410 480 l S 119 665 m 141 665 l S',
+        texts: [
+            { x: 55, y: 740, text: 'Motion and measurement' },
+            { x: 55, y: 685, text: 'The formula relates speed to distance.' },
+            { x: 75, y: 660, size: 22, text: 'E =' },
+            { x: 126, y: 673, size: 22, text: '1' },
+            { x: 126, y: 644, size: 22, text: '2' },
+            { x: 155, y: 660, size: 22, text: 'mv' },
+            { x: 183, y: 673, text: '2' },
+            { x: 55, y: 565, text: 'The following chart shows distance over time.' },
+            { x: 55, y: 520, text: 'Distance' },
+            { x: 420, y: 280, text: 'Time' },
+            { x: 410, y: 488, text: '30 m' },
+            { x: 410, y: 310, text: '10 s' },
+        ],
+    }]);
+}
+
 export function buildCjkPdf({ vertical = false } = {}) {
     const objects = ['<< /Type /Catalog /Pages 2 0 R >>', ''];
     const add = body => objects.push(body);

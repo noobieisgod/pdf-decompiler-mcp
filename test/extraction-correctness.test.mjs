@@ -6,8 +6,8 @@ import { loadConfig } from '../src/config/runtime.mjs';
 import { extractPageContent } from '../src/extract/document.mjs';
 import { anchorLinkAnnotations } from '../src/extract/links.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
-import { LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
-import { buildCjkPdf, buildSyntheticPdf } from './fixtures/generate-fixtures.mjs';
+import { FigureElementSchema, LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
+import { buildCjkPdf, buildSyntheticPdf, buildVectorChartPdf } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
@@ -211,6 +211,48 @@ test('vector approximation remains bounded and mixed content survives uncertain 
         assert.ok(sample.model.elements.some(element => element.type === expected));
         await manager.closeDocument(sample.opened);
     }
+});
+
+test('vector chart and fraction evidence is cropped lazily while native text and tables stay searchable', async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'off' });
+    const source = path.join(root, 'vector-chart.pdf');
+    await fs.writeFile(source, buildVectorChartPdf());
+    const tablePath = path.join(root, 'table.pdf');
+    await fs.copyFile(path.join(fixtureRoot, 'tables-bordered.pdf'), tablePath);
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    for (const mode of ['text', 'balanced']) {
+        const { elements } = await manager.getPages({ ...opened, mode });
+        assert.ok(elements.some(element => element.text === '30 m'));
+        assert.equal(elements.some(element => element.type === 'figure'), false);
+    }
+    const { elements } = await manager.getPages({ ...opened, mode: 'fidelity' });
+    const figures = elements.filter(element => element.type === 'figure');
+    assert.equal(figures.length, 2);
+    const [fraction, figure] = figures.map(value => FigureElementSchema.parse(value));
+    assert.equal(fraction.figureKind, 'vector_region');
+    assert.ok(fraction.bbox.x <= 75 && fraction.bbox.x + fraction.bbox.width >= 190);
+    assert.ok(fraction.bbox.y <= 97 && fraction.bbox.y + fraction.bbox.height >= 148);
+    assert.ok((await manager.readResource(fraction.asset.uri)).blob);
+    assert.equal(figure.figureKind, 'vector_region');
+    assert.equal(figure.asset.sha256, null);
+    assert.deepEqual(figure.citation.bbox, figure.asset.deferredRender.bbox);
+    const { x, y, width, height } = figure.bbox;
+    assert.ok(x <= 55 && y <= 260 && y > 200 && x + width >= 460 && y + height >= 512);
+    const resource = await manager.readResource(figure.asset.uri);
+    const crop = Buffer.from(resource.blob, 'base64');
+    assert.equal(resource.mimeType, 'image/png');
+    assert.equal(crop.readUInt32BE(16), Math.ceil(width));
+    assert.equal(crop.readUInt32BE(20), Math.ceil(height));
+    const rendered = await manager.renderPage({ ...opened, page: 1, bbox: figure.bbox, format: 'png' });
+    assert.equal((await manager.readResource(rendered.uri)).blob, resource.blob);
+    const search = await manager.search({ ...opened, query: '30 m', strategy: 'phrase' });
+    assert.ok(search.results.some(hit => hit.type === 'block'));
+    const nativeTable = await manager.open({ source: tablePath });
+    const table = await manager.getPages({ ...nativeTable, mode: 'fidelity' });
+    assert.ok(table.elements.some(element => element.type === 'table'));
+    assert.equal(table.elements.some(element => element.type === 'figure'), false);
 });
 
 test('independently positioned columns retain column-major deterministic order', async t => {

@@ -118,14 +118,15 @@ export const AssetSchema = z.object({
     width: z.number().nonnegative(),
     height: z.number().nonnegative(),
     sha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
-    deferredRender: z.object({ page: z.number().int().positive(), format: z.enum(['png', 'jpeg']), maxDimension: z.number().int().positive() }).nullable().optional(),
+    deferredRender: z.object({ page: z.number().int().positive(), format: z.enum(['png', 'jpeg']), maxDimension: z.number().int().positive(),
+        bbox: BoundingBoxSchema.optional() }).nullable().optional(),
     uri: ResourceUriSchema,
 });
 
 export const FigureElementSchema = z.object({
     ...ElementBase,
     type: z.literal('figure'),
-    figureKind: z.enum(['embedded_image', 'page_visual']),
+    figureKind: z.enum(['embedded_image', 'page_visual', 'vector_region']),
     caption: z.string().nullable(),
     text: z.string().nullable(),
     asset: AssetSchema,

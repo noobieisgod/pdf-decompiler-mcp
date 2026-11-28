@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 19;
+export const EXTRACTION_REVISION = 20;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -253,6 +253,9 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
             && ['vector', 'unknown', 'raster', 'mixed'].includes(page.visualType)
             && ['visual', 'scan_like'].includes(rawPage.contentClass);
         if (shouldAddDeferredVisual) imageRecords.push({ bbox: { x: 0, y: 0, width, height }, regionKind: 'page_visual', deferredRender: true });
+        for (const bbox of rawPage.vectorRegions || []) {
+            imageRecords.push({ bbox, width: bbox.width, height: bbox.height, regionKind: 'vector_region', deferredRender: true });
+        }
         imageRecords.forEach((image, index) => {
             const id = `figure:${rawPage.page}:${index + 1}`;
             const assetId = `asset:${rawPage.page}:figure:${index + 1}`;
@@ -268,7 +271,8 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
                 height: image.height || (image.regionKind === 'page_visual' ? height : 0),
                 data: image.data || null,
                 sha256: image.data ? sha256(Buffer.from(image.data, 'base64')) : null,
-                deferredRender: image.deferredRender ? { page: rawPage.page, format: 'png', maxDimension: 1200 } : null,
+                deferredRender: image.deferredRender ? { page: rawPage.page, format: 'png', maxDimension: 1200,
+                    ...(image.regionKind === 'vector_region' && bbox ? { bbox } : {}) } : null,
                 uri: resourceUri(documentId, generation, 'asset', assetId),
             };
             assets.push(asset);
@@ -276,7 +280,7 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
             const record = {
                 id,
                 type: 'figure',
-                figureKind: image.regionKind === 'page_visual' ? 'page_visual' : 'embedded_image',
+                figureKind: image.regionKind === 'page_visual' || image.regionKind === 'vector_region' ? image.regionKind : 'embedded_image',
                 page: rawPage.page,
                 bbox,
                 caption,

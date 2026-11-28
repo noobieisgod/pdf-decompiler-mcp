@@ -42,6 +42,8 @@ Accepts page numbers or ranges, `text`, `balanced`, or `fidelity` mode, element 
 
 Markdown data contains `outputFormat`, `markdownFormatVersion`, `pages`, `markdown`, and resource URIs. For smaller cited responses, set `citationDetail: "compact"` with Markdown output. The envelope's `citations` array is empty in this mode and `data.citationRefs` contains each citation's `pageId`, `elementId`, and `bbox`. Add the envelope's `documentId` and `extractionFingerprint` to each reference to recover the full citation. The cursor preserves the chosen detail. Full citations remain the default.
 
+Fidelity reads may include a `vector_region` figure for a detected chart or fraction. The cited box identifies the crop on the original page. Read the figure's asset URI to render that region.
+
 Paged retrieval uses deterministic fair allocation across the normalized requested-page order. Version 3 cursors authenticate and restore page order, per-page positions, current round-robin position, format, table detail, filters, inclusion overrides, budgets, extraction generation, and serializer versions. A continuation may therefore supply only the document reference and cursor. Explicit repeated selectors must match. Permanently oversized items produce an omission and are advanced. The server never returns a zero-progress cursor.
 
 The full Markdown string appears once in structured content. Compact text contains a bounded summary, resource URI, and continuation instructions. Complete wire-size accounting includes the protocol wrapper, envelope, structured Markdown, compact text, citations, warnings, omissions, and resource links.

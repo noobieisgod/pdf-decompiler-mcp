@@ -10,6 +10,7 @@ import { recognizeScannedSpread } from './ocr-spread.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
+import { findFractionRegions, findVectorRegions, MAX_VECTOR_REGIONS } from './vector-regions.mjs';
 
 const MIN_OCR_RESOLUTION_RETRY_SCALE = 1.25;
 
@@ -52,6 +53,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     let filteredReason = routing.filteredReason ?? null;
     let rawPageImage = null;
     let rawImages = [];
+    let vectorRegions = [];
     let rawTables = [];
     let rawLinks = [];
     let pageText = '';
@@ -236,6 +238,8 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     if (extractionMode === 'native') {
         const structTree = mcidMap.size ? await pdfjsPage.getStructTree().catch(() => null) : null;
         const structTables = extractStructTables(structTree, mcidMap);
+        const fractions = findFractionRegions(visualInspection.visualSignals, viewport, bodyItems,
+            [...structTables.map(table => table.bbox), ...[...imagePlacements.values()].map(image => image.bbox)]);
         let tables;
         let nonTableItems;
         if (structTables.length > 0) {
@@ -243,7 +247,13 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
             tables = structTables;
             nonTableItems = bodyItems.filter(item => item.mcid == null || !tableMcids.has(item.mcid));
         } else {
-            ({ tables, nonTableItems } = detectTables(bodyItems, viewport));
+            const equationItems = new Set(bodyItems.filter(({ bbox }) => bbox && fractions.some(box =>
+                bbox.x >= box.x && bbox.x + bbox.width <= box.x + box.width && bbox.y >= box.y && bbox.y + bbox.height <= box.y + box.height)));
+            ({ tables, nonTableItems } = detectTables(equationItems.size ? bodyItems.filter(item => !equationItems.has(item)) : bodyItems, viewport));
+            if (equationItems.size) {
+                const remaining = new Set(nonTableItems);
+                nonTableItems = bodyItems.filter(item => equationItems.has(item) || remaining.has(item));
+            }
         }
         const normalizedTables = tables.map(table => ({ ...table, rows: normalizeTableRows(table.rows) }));
         if (contentClass === 'table' && normalizedTables.length === 0) contentClass = pageProfile.dominantRole === 'list' ? 'structured_text' : 'text';
@@ -404,6 +414,9 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
             });
         }
         pageText = buildPageTextWithLinks(nonTableItems, activePlacements, normalizedTables, imageIds, tableIds, linkMarkerMap, nativeLayout.blocks);
+        vectorRegions = [...fractions, ...findVectorRegions(visualInspection.visualSignals, viewport, nativeLayout.blocks,
+            [...fractions, ...rawTables.map(table => table.bbox), ...[...activePlacements.values()].map(image => image.bbox)], MAX_VECTOR_REGIONS - fractions.length)]
+            .sort((a, b) => a.y - b.y || a.x - b.x);
     } else {
         const { links, warnings: linkWarnings } = anchorLinkAnnotations(bodyItems, annotationResult.links);
         rawLinks = links;
@@ -434,6 +447,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         warnings: [...new Map(extractionWarnings.map(warning => [JSON.stringify(warning), warning])).values()],
         pageProfile,
         rawImages,
+        vectorRegions,
         rawTables,
         rawLinks,
         rawPageImage,
