@@ -5,7 +5,7 @@ import { CacheManager } from '../cache/cache-manager.mjs';
 import { fingerprint, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
 import { buildCanonicalModel, extractionFingerprint, indexModel, mergeCanonicalModels, modelView } from '../model/canonical.mjs';
-import { buildBm25, searchBm25 } from '../search/bm25.mjs';
+import { BM25_INDEX_VERSION, buildBm25, searchBm25 } from '../search/bm25.mjs';
 import { MARKDOWN_FORMAT_VERSION, MARKDOWN_SERIALIZER_REVISION, serializeElementMarkdown, serializePagedMarkdown } from '../markdown/serializer.mjs';
 import { getFullMarkdownExport, markdownResourceUri } from '../markdown/export.mjs';
 import { buildSemanticIndex, createEmbedder, reciprocalRankFusion, searchSemantic } from '../search/semantic.mjs';
@@ -450,7 +450,7 @@ export class DocumentManager {
                 }
             }
         }
-        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), strategy, ...(granularity === 'page' ? { granularity } : {}), pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null, ...(model.partial ? { processedPages: model.processedPages } : {}) };
+        const cursorArguments = { queryDigest: fingerprint(String(args.query).normalize('NFKC')), bm25Version: BM25_INDEX_VERSION, strategy, ...(granularity === 'page' ? { granularity } : {}), pages: args.pages || null, elementTypes: args.elementTypes || null, budget: args.budget || null, ...(model.partial ? { processedPages: model.processedPages } : {}) };
         const start = args.cursor ? this.cursors.decode(args.cursor, {
             documentId: state.model.documentId,
             extractionFingerprint: state.model.extractionFingerprint,

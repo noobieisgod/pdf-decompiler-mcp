@@ -9,6 +9,7 @@ const model = buildCanonicalModel(Buffer.from('%PDF-alpha'), rawDocument(), conf
 
 test('BM25 is deterministic, Unicode normalized, positioned, and indexes metadata and outlines', () => {
     assert.deepEqual(tokenize('ＲＥＶＥＮＵＥ café'), ['revenue', 'café']);
+    assert.deepEqual(tokenize('Q3年度 レポート'), ['q3', '年', '度', 'レ', 'ポ', 'ー', 'ト']);
     const index = buildBm25(model);
     assert.deepEqual(index, buildBm25(model));
     assert.ok(index.documents.every(document => Object.keys(document.positions).length));
@@ -80,4 +81,22 @@ test('page search ranks repeated exact evidence and returns one cited match per 
     assert.match(hits[0].snippet, /Net income/);
     assert.equal(hits[0].citation.pageId, 'page:2');
     assert.deepEqual(searchBm25(index, 'net income', { granularity: 'page', pages: [1] }).map(hit => hit.page), [1]);
+});
+
+test('phrase search finds consecutive Chinese and Japanese characters within sentences', () => {
+    const raw = rawDocument(2);
+    const sentences = ['公司營運包括先進製程與資訊安全。', '当社の半導体輸出規制と製造業の状況'];
+    raw.pages.forEach((page, index) => {
+        page.tables = [];
+        page.textBlocks = [{ text: sentences[index], role: 'text', bbox: { x: 10, y: 10, width: 300, height: 16 } }];
+    });
+    const model = buildCanonicalModel(Buffer.from('%PDF-phrase-cjk'), raw, config, 'deps');
+    const index = JSON.parse(JSON.stringify(buildBm25(model)));
+    for (const [query, page] of [['先進製程', 1], ['半導体輸出', 2], ['資訊安全', 1]]) {
+        const results = searchBm25(index, query, { phrase: true, granularity: 'page' });
+        assert.deepEqual(results.map(result => result.page), [page]);
+        assert.ok(results[0].snippet.includes(query));
+        assert.equal(results[0].citation.pageId, `page:${page}`);
+    }
+    assert.deepEqual(searchBm25(index, '安全資訊', { phrase: true }), []);
 });

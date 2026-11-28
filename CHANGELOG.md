@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Phrase search now matches text inside unspaced Chinese and Japanese sentences.
+
 - Decode PDFs that depend on bundled Adobe character maps, including Chinese and Japanese composite fonts.
 
 - Store term positions and neighbor references once to reduce keyword index size and load time.

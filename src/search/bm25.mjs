@@ -1,8 +1,8 @@
 import { PdfDecompilerError } from '../core/errors.mjs';
 
-const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
+const TOKEN_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]|[[\p{L}\p{N}]--[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]]+/gv;
 const MAX_PHRASE_TOKENS = 64;
-export const BM25_INDEX_VERSION = 3;
+export const BM25_INDEX_VERSION = 4;
 
 export function tokenize(value) {
     return String(value || '').normalize('NFKC').toLocaleLowerCase('und').match(TOKEN_PATTERN) || [];
@@ -89,7 +89,7 @@ function hasPosition(positions, target) {
 export function searchBm25(index, query, options = {}) {
     const phraseTokens = tokenize(query);
     if (options.phrase && phraseTokens.length > MAX_PHRASE_TOKENS) {
-        throw new PdfDecompilerError('invalid_input', `Phrase search supports up to ${MAX_PHRASE_TOKENS} words.`);
+        throw new PdfDecompilerError('invalid_input', `Phrase search supports up to ${MAX_PHRASE_TOKENS} tokens.`);
     }
     const queryTokens = [...new Set(phraseTokens)];
     if (!queryTokens.length) return [];

@@ -20,7 +20,7 @@ Returns metadata, outline, page classifications, visual signals, element counts,
 
 ## `pdf_search`
 
-Requires an exact document reference and query. Strategies are `full_text`, `semantic`, `hybrid`, and `phrase`. Use `phrase` for up to 64 ordered, consecutive normalized words within a single indexed element. Case, punctuation, and spacing are ignored. Filters include pages and element types. Semantic failure emits a warning and returns BM25 results. Cursors bind a digest of the normalized query and arguments without exposing query text.
+Requires an exact document reference and query. Strategies are `full_text`, `semantic`, `hybrid`, and `phrase`. Use `phrase` for up to 64 consecutive normalized tokens within a single indexed element. Han and Kana characters count separately so that phrases can match inside unspaced Chinese and Japanese text. Case, punctuation, and spacing are ignored. Filters include pages and element types. Semantic failure emits a warning and returns BM25 results. Cursors bind the index version and a digest of the normalized query and arguments without exposing query text.
 
 `textCoverage` counts unprocessed and uncertain pages in the search scope. Uncertain pages include extraction failures, rejected OCR regions, and visual pages with no extracted text. A zero-result search warns when either count is nonzero. Zero counts mean these checks found no known gaps.
 
