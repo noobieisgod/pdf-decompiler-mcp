@@ -44,6 +44,8 @@ Extraction revision 20 uses connected vector paths and nearby labels to locate c
 
 Extraction revision 21 associates headers with regularly spaced numeric rows using the stable right edge of each column. It preserves native text exactly and keeps each side's content together on table spreads.
 
+Extraction revision 22 extends borderless numeric table recovery to individual scanned pages. Complete headers and repeated right-aligned rows can explain why otherwise confident OCR failed the prose check. When these tables account for most recognized words, extraction can accept that result before starting additional OCR processes. Each cell retains its recognized text and page coordinates.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

@@ -289,7 +289,7 @@ test('financial rows stay structured when OCR splits their columns into separate
         confidence: line === 2 && column === 3 ? 54 : 96, bbox: { x: 20 + column * 90, y: 20 + line * 17, width: 34, height: 11 },
     })));
     const blocks = [...Map.groupBy(words, word => word.block).values()].map(spans => ({ spans }));
-    const [table] = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { words, blocks }, true).tables;
+    const [table] = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { ok: true, words, blocks }).tables;
     assert.deepEqual(table.rows, rows);
     assert.deepEqual(table.cells[2][3].bbox, words[11].bbox);
     assert.equal(table.lowConfidence, true);
@@ -305,11 +305,38 @@ test('an OCR number split into two words stays in its original table column', ()
         bbox: { x: 20 + column * 90 + fragment * 17, y: 20 + line * 17, width: 34 / items.length, height: 11 },
     })))).map((word, sourceIndex) => ({ ...word, sourceIndex }));
     const blocks = [{ spans: words }];
-    const { tables, blocks: remaining } = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { words, blocks }, true);
+    const { tables, blocks: remaining } = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { ok: true, words, blocks });
     assert.equal(tables.length, 1);
     assert.deepEqual(tables[0].rows, rows);
     assert.equal(tables[0].lowConfidence, true);
     assert.deepEqual(remaining, []);
+});
+
+test('well-aligned numeric OCR can pass the prose gate with a complete header', () => {
+    const canvas = createCanvas(500, 300);
+    fillCanvasWhite(canvas);
+    const rows = [['Meter zone', 'Inbound total', 'Outbound total', 'Net rate'],
+        ['Central sector', '1,200.8', '910.7', '+14.5%'], ['Western', '875.2', '902.4', '-9.70%'],
+        ['Airport', '340.3', '317.0', '+5.5%'], ['Harbor', '503.9', '614.5', '-12.0%']];
+    const words = rows.flatMap((row, line) => row.flatMap((cell, column) => cell.split(' ').map((text, part) => ({
+        text, block: 1, paragraph: 1, line, confidence: 96,
+        bbox: { x: 30 + column * 112 + (line && column ? 44 - text.length * 5 : part * 34),
+            y: 20 + line * 33, width: text.length * 5, height: 10 },
+    })))).map((word, sourceIndex) => ({ ...word, sourceIndex }));
+    const geometry = { pageWidth: canvas.width, pageHeight: canvas.height };
+    const input = { ok: false, confidence: { ok: true }, words, blocks: [{ spans: words }], text: rows.map(row => row.join(' ')).join('\n') };
+    assert.equal(ocrTextLooksGood(input.text).ok, false);
+    const result = extractScannedTables(canvas, geometry, input);
+    assert.equal(result.ok, true);
+    assert.equal(result.tables[0].headerRows, 1);
+    assert.deepEqual(result.tables[0].rows, rows);
+    assert.deepEqual(result.tables[0].cells[2][3].bbox, words.find(word => word.text === '-9.70%').bbox);
+    assert.deepEqual(result.blocks, []);
+
+    const noHeader = { ...input, words: words.filter(word => word.line !== 0) };
+    assert.equal(extractScannedTables(canvas, geometry, noHeader), noHeader);
+    const lowConfidence = { ...input, confidence: { ok: false } };
+    assert.equal(extractScannedTables(canvas, geometry, lowConfidence), lowConfidence);
 });
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {

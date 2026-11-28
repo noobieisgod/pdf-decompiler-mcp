@@ -50,9 +50,10 @@ export async function recognizeScannedSpread(canvas, viewport, render, dimension
         const raster = await render(scale, part);
         const geometry = { pageWidth: part.width, pageHeight: part.height, pixelWidth: raster.width, pixelHeight: raster.height,
             dpi: Math.round(scale * 72) };
-        const result = await runTesseractOcr(await raster.encode('png'), pageNum, geometry, languages, spreadDeadline);
+        const readTables = result => extractScannedTables(raster, geometry, result);
+        const result = await runTesseractOcr(await raster.encode('png'), pageNum, geometry, languages, spreadDeadline, readTables);
         if (!result.ok || result.correctedRotation) return null;
-        const extracted = extractScannedTables(raster, geometry, result, true);
+        const extracted = result.tables ? result : readTables(result);
         for (const block of extracted.blocks) {
             if (block.bbox) block.bbox.x += part.x;
             blocks.push(block);

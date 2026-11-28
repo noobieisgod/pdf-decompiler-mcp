@@ -1,5 +1,6 @@
 import { unionBBoxes } from '../model/geometry.mjs';
 import { OCR_MIN_MEAN_CONFIDENCE } from '../config/constants.mjs';
+import { ocrTextLooksGood } from './ocr.mjs';
 
 const MAX_RULES = 64;
 const MIN_RULE_LENGTH = 0.075;
@@ -126,16 +127,20 @@ function parseFinancialLine(words) {
 }
 
 function financialHeader(line, row) {
-    if (!line || line.length !== row.cells.length || row.y - line[0].bbox.y > 24 || !/\p{L}/u.test(line[0].text)) return null;
+    if (!line || line.length < row.cells.length || row.y - line[0].bbox.y > Math.max(24, row.words[0].bbox.height * 4)
+        || !/\p{L}/u.test(line[0].text)) return null;
     if (Math.abs(line[0].bbox.x - row.labelX) > FINANCIAL_COLUMN_TOLERANCE) return null;
-    for (let column = 1; column < line.length; column++) {
-        const { x, width } = line[column].bbox;
+    const labelEnd = row.cells[0].at(-1).bbox;
+    const edges = [labelEnd.x + labelEnd.width, ...row.right];
+    const cells = edges.map(() => []);
+    for (const word of line) {
+        const { x, width } = word.bbox;
         const center = x + width / 2;
-        const right = row.right[column - 1];
-        const left = column === 1 ? row.cells[1][0].bbox.x - 20 : row.right[column - 2] + FINANCIAL_COLUMN_TOLERANCE;
-        if (center < left || center > right + FINANCIAL_COLUMN_TOLERANCE) return null;
+        const column = edges.findIndex(right => center <= right + FINANCIAL_COLUMN_TOLERANCE);
+        if (column < 0) return null;
+        cells[column].push(word);
     }
-    return line.map(word => [word]);
+    return cells.every(cell => cell.length) ? cells : null;
 }
 
 function alignFinancialLine(words, anchor) {
@@ -163,6 +168,9 @@ function readFinancialTables(lines) {
     for (let start = 0; start < parsed.length; start++) {
         const row = parsed[start];
         if (!row) continue;
+        const headerLine = lines[start - 1];
+        const header = financialHeader(headerLine, row);
+        const maxGap = header ? Math.max(27, (row.y - headerLine[0].bbox.y) * 1.25) : 27;
         const aligned = [row];
         let ambiguousRows = 0;
         let end = start + 1;
@@ -172,13 +180,12 @@ function readFinancialTables(lines) {
                 && Math.abs(current.labelX - row.labelX) <= FINANCIAL_COLUMN_TOLERANCE
                 && current.right.every((right, index) => Math.abs(right - row.right[index]) <= FINANCIAL_COLUMN_TOLERANCE);
             const next = exactColumns ? current : alignFinancialLine(lines[end], row);
-            if (!next || next.y - aligned.at(-1).y > 27 || next.y - aligned.at(-1).y < 3) break;
+            if (!next || next.y - aligned.at(-1).y > maxGap || next.y - aligned.at(-1).y < 3) break;
             if (!exactColumns) ambiguousRows += 1;
             aligned.push(next);
         }
         if (aligned.length < MIN_FINANCIAL_ROWS || aligned.length - ambiguousRows < MIN_FINANCIAL_ROWS - 1) continue;
         const body = aligned.map(item => item.cells);
-        const header = financialHeader(lines[start - 1], row);
         const continuation = lines[end];
         const last = aligned.at(-1);
         if (continuation && !parsed[end] && continuation[0].block === last.words[0].block && continuation[0].paragraph === last.words[0].paragraph
@@ -206,11 +213,12 @@ function groupByRowCenter(words) {
     return rows;
 }
 
-export function extractScannedTables(canvas, geometry, ocr, allowFinancialLayout = false) {
+export function extractScannedTables(canvas, geometry, ocr) {
+    if (!ocr.ok && (!ocr.confidence?.ok || !ocrTextLooksGood(ocr.text, true).ok)) return ocr;
     const used = new Set();
     const tables = [];
     const accepted = [];
-    for (const grid of findGrids(canvas)) {
+    for (const grid of ocr.ok ? findGrids(canvas) : []) {
         if (accepted.some(other => grid.columns[0] < other.columns.at(-1) && grid.columns.at(-1) > other.columns[0]
             && grid.rows[0] < other.rows.at(-1) && grid.rows.at(-1) > other.rows[0])) continue;
         const result = readGrid(grid, ocr.words, canvas.width / geometry.pageWidth, canvas.height / geometry.pageHeight);
@@ -219,22 +227,23 @@ export function extractScannedTables(canvas, geometry, ocr, allowFinancialLayout
         tables.push(result.table);
         result.used.forEach(word => used.add(word));
     }
-    if (allowFinancialLayout) {
-        const remaining = () => ocr.words.filter(word => word.bbox && !used.has(word));
-        const lines = [...Map.groupBy(remaining(), word => `${word.block}:${word.paragraph}:${word.line}`).values()];
-        for (const read of [() => readFinancialTables(lines), () => readFinancialTables(groupByRowCenter(remaining()))]) {
-            for (const result of read()) {
-                if (tables.some(table => {
-                    const { x, y, width, height } = result.table.bbox;
-                    const box = table.bbox;
-                    return x < box.x + box.width && x + width > box.x && y < box.y + box.height && y + height > box.y;
-                })) continue;
-                tables.push(result.table);
-                result.used.forEach(word => used.add(word));
-            }
+    let reliableWords = 0;
+    const remaining = () => ocr.words.filter(word => word.bbox && !used.has(word));
+    const lines = [...Map.groupBy(remaining(), word => `${word.block}:${word.paragraph}:${word.line}`).values()];
+    for (const read of [() => readFinancialTables(lines), () => readFinancialTables(groupByRowCenter(remaining()))]) {
+        for (const result of read()) {
+            if (tables.some(table => {
+                const { x, y, width, height } = result.table.bbox;
+                const box = table.bbox;
+                return x < box.x + box.width && x + width > box.x && y < box.y + box.height && y + height > box.y;
+            })) continue;
+            tables.push(result.table);
+            result.used.forEach(word => used.add(word));
+            if (result.table.headerRows && !result.table.lowConfidence) reliableWords += result.used.length;
         }
     }
-    if (!tables.length) return ocr;
+    // Reconsider prose rejection only when reliable, headed tables account for most OCR words.
+    if (!tables.length || (!ocr.ok && reliableWords * 2 <= ocr.words.length)) return ocr;
     const blocks = ocr.blocks.flatMap(block => {
         const spans = block.spans.filter(word => !used.has(word));
         if (spans.length === block.spans.length) return [block];
@@ -243,5 +252,5 @@ export function extractScannedTables(canvas, geometry, ocr, allowFinancialLayout
         const text = [...lines.values()].map(line => line.sort((a, b) => a.bbox.x - b.bbox.x).map(word => word.text).join(' ')).join('\n');
         return [{ ...block, spans, text, bbox: unionBBoxes(spans.map(word => word.bbox), geometry.pageWidth, geometry.pageHeight) }];
     });
-    return { ...ocr, blocks, tables: tables.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x) };
+    return { ...ocr, ok: true, reason: null, blocks, tables: tables.sort((a, b) => a.bbox.y - b.bbox.y || a.bbox.x - b.bbox.x) };
 }

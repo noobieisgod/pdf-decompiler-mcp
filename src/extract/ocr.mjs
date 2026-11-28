@@ -271,7 +271,7 @@ async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, d
     return { ...result, correctedRotation: rotation };
 }
 
-export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng', deadline = Date.now() + OCR_TIMEOUT_MS) {
+export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng', deadline = Date.now() + OCR_TIMEOUT_MS, recover = null) {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-decompiler-ocr-'));
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
@@ -282,6 +282,8 @@ export async function runTesseractOcr(pngBytes, pageNum, geometry = null, langua
         if (timeLeft <= 0) return { ok: false, text: '', reason: 'OCR process timed out' };
         const result = await readOcr(inputPath, geometry, languages, mode, timeLeft);
         if (result.ok) return result;
+        const recovered = recover?.(result);
+        if (recovered?.ok) return recovered;
         const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, deadline).catch(() => null);
         if (rotated) return rotated;
         const remaining = deadline - Date.now();

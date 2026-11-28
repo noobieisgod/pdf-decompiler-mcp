@@ -92,7 +92,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                 cachedFullCanvas = await renderFullPageCanvas();
                 const maxOcrDim = Math.min(maxImageDim ?? 1400, 1400);
                 const deadline = Date.now() + OCR_TIMEOUT_MS;
-                const recognize = async canvas => {
+                const recognize = async (canvas, highestResolution) => {
                     const geometry = {
                         pixelWidth: canvas.width,
                         pixelHeight: canvas.height,
@@ -104,16 +104,19 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         if (corrected) return corrected;
                     }
                     const dpi = Math.round(72 * Math.max(canvas.width, canvas.height) / Math.max(viewport.width, viewport.height));
+                    const readTables = pageProfile.visualType === 'raster'
+                        ? result => extractScannedTables(canvas, geometry, result) : null;
                     const result = await runTesseractOcr(await canvas.encode('png'), pageNum, {
                         ...geometry, dpi: pageProfile.visualType === 'raster' && dpi > 72 && dpi <= 600 ? dpi : undefined,
-                    }, ocrLanguages, deadline);
-                    return result.ok && pageProfile.visualType === 'raster' ? extractScannedTables(canvas, geometry, result) : result;
+                    }, ocrLanguages, deadline, highestResolution ? readTables : null);
+                    return readTables && result.ok && !result.correctedRotation && !result.tables ? readTables(result) : result;
                 };
                 const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
                 const spread = pageProfile.visualType === 'raster' && renderPageCanvasOverride
                     ? await recognizeScannedSpread(initialRaster, viewport, renderPageCanvasOverride, maxOcrRetryDim, pageNum, ocrLanguages, deadline).catch(() => null)
                     : null;
-                let ocrResult = spread ?? await recognize(initialRaster);
+                const isHighestResolution = dimension => maxOcrRetryDim < dimension * MIN_OCR_RESOLUTION_RETRY_SCALE;
+                let ocrResult = spread ?? await recognize(initialRaster, isHighestResolution(Math.max(initialRaster.width, initialRaster.height)));
                 if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster') {
                     let lastDimension = Math.max(initialRaster.width, initialRaster.height);
                     for (const dimension of [maxOcrDim, maxOcrRetryDim]) {
@@ -121,7 +124,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         if (dimension < lastDimension * MIN_OCR_RESOLUTION_RETRY_SCALE) continue;
                         const retryScale = dimension / Math.max(viewport.width, viewport.height);
                         const raster = retryScale > 1 ? renderFullPageCanvas(retryScale) : Promise.resolve(cachedFullCanvas);
-                        const retry = await raster.then(canvas => recognize(scaleCanvas(canvas, dimension))).catch(() => null);
+                        const retry = await raster.then(canvas => recognize(scaleCanvas(canvas, dimension), isHighestResolution(dimension))).catch(() => null);
                         if (retry?.ok) {
                             ocrResult = retry;
                             break;
