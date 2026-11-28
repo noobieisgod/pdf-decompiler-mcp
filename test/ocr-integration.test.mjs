@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import { GlobalFonts } from '@napi-rs/canvas';
 import { openMupdfDocument, renderMupdfPageToCanvas } from '../src/backend/mupdf-runtime.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
-import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
+import { missingTesseractLanguages, ocrTextLooksGood, runTesseractOcr } from '../src/extract/ocr.mjs';
 import { extractScannedTables, retryRuledGrid } from '../src/extract/ocr-tables.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
 import { createCanvas, fillCanvasWhite } from '../src/pdf/canvas.mjs';
@@ -35,6 +36,18 @@ test('OCR text validation accepts Unicode letters and unspaced Japanese', () => 
     assert.equal(ocrTextLooksGood('Größe und Übersicht der Öffnungszeiten am Samstag').ok, true);
     assert.equal(ocrTextLooksGood('この資料は半導体製造の工程と輸出管理について説明します').ok, true);
     assert.equal(ocrTextLooksGood('@@@@@@ ### $$$$ === ... //////').ok, false);
+});
+
+test('single-line OCR returns a signed decimal for cell confirmation', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async () => {
+    const canvas = createCanvas(360, 96);
+    const context = fillCanvasWhite(canvas);
+    GlobalFonts.registerFromPath(path.resolve('node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf'), 'CellTestSans');
+    context.fillStyle = 'black';
+    context.font = '48px CellTestSans';
+    context.fillText('-1,240.85', 31, 66);
+    const result = await runTesseractOcr(await canvas.encode('png'), 1, { singleLine: true });
+    assert.deepEqual(result.words.map(word => word.text), ['-1,240.85']);
+    assert.equal(result.ok, false);
 });
 
 test('a requested missing OCR pack returns an actionable error', async t => {

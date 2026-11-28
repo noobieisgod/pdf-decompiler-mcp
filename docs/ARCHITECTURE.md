@@ -48,6 +48,8 @@ Extraction revision 22 extends borderless numeric table recovery to individual s
 
 Extraction revision 23 detects faint rules in scanned numeric tables. When the first OCR pass misses cells or misreads uncertain numbers, it can rerender one table crop at higher resolution within the same OCR budget. Deskewed table and cell boxes are mapped back to the original displayed page.
 
+Extraction revision 24 can reread one malformed number in an isolated ruled cell. It accepts the replacement when both readings of the crop agree and every previously readable digit and punctuation mark stays intact. The table keeps its uncertainty warning.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

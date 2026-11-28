@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Confirm an unread digit with a single-line OCR pass while retaining the scanned table's uncertainty warning.
 ## 3.2.0
 
 - Restore cached documents without decoding figures. Read and verify each image when its resource is requested.

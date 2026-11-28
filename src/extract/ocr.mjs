@@ -276,12 +276,13 @@ export async function runTesseractOcr(pngBytes, pageNum, geometry = null, langua
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
         fs.writeFileSync(inputPath, pngBytes);
+        const singleLine = geometry?.singleLine === true;
         const fullPage = geometry?.ocrSource?.scope !== 'image';
-        const mode = fullPage ? '3' : '6';
+        const mode = singleLine ? '7' : fullPage ? '3' : '6';
         const timeLeft = deadline - Date.now();
         if (timeLeft <= 0) return { ok: false, text: '', reason: 'OCR process timed out' };
         const result = await readOcr(inputPath, geometry, languages, mode, timeLeft);
-        if (result.ok) return result;
+        if (singleLine || result.ok) return result;
         const recovered = recover?.(result);
         if (recovered?.ok) return recovered;
         const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, deadline).catch(() => null);

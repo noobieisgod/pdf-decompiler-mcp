@@ -1,6 +1,7 @@
 import { unionBBoxes } from '../model/geometry.mjs';
-import { OCR_MIN_MEAN_CONFIDENCE } from '../config/constants.mjs';
+import { OCR_LOW_CONFIDENCE_THRESHOLD, OCR_MIN_MEAN_CONFIDENCE } from '../config/constants.mjs';
 import { ocrTextLooksGood, runTesseractOcr } from './ocr.mjs';
+import { createCanvas, fillCanvasWhite } from '../pdf/canvas.mjs';
 
 const MAX_RULES = 64;
 const MIN_RULE_LENGTH = 0.075;
@@ -119,6 +120,33 @@ function hasNumericGrid(rows) {
     return rows.filter(row => row.filter(value => /\p{Nd}/u.test(value) && NUMERIC_CELL.test(value)).length >= 2).length >= 3;
 }
 
+function differsByUnreadDigit(original, candidate) {
+    if (NUMERIC_CELL.test(original) || !NUMERIC_CELL.test(candidate)) return false;
+    const prior = [...original];
+    const next = [...candidate];
+    if (prior.length !== next.length) return false;
+    const mismatches = prior.flatMap((char, index) => char === next[index] ? [] : [index]);
+    if (mismatches.length !== 1) return false;
+    const [index] = mismatches;
+    return !/[\p{Nd}+−.,()%‰-]/u.test(prior[index]) && /\p{Nd}/u.test(next[index]);
+}
+
+async function confirmGridNumber(crop, clip, bounds, word, { dpi, pageNum, languages, deadline }) {
+    if (Date.now() >= deadline) return false;
+    const sx = crop.width / clip.width;
+    const sy = crop.height / clip.height;
+    const x = Math.ceil((bounds.x - clip.x) * sx) + 2;
+    const y = Math.ceil((bounds.y - clip.y) * sy) + 2;
+    const width = Math.floor(bounds.width * sx) - 4;
+    const height = Math.floor(bounds.height * sy) - 4;
+    if (width < MIN_CELL_PIXELS || height < MIN_CELL_PIXELS) return false;
+    const line = createCanvas(width + 16, height + 16);
+    fillCanvasWhite(line).drawImage(crop, x, y, width, height, 8, 8, width, height);
+    const result = await runTesseractOcr(await line.encode('png'), pageNum, { dpi, singleLine: true }, languages, deadline);
+    return result.words?.length === 1 && result.words[0].text === word.text
+        && result.words[0].confidence >= OCR_LOW_CONFIDENCE_THRESHOLD && result.words[0].confidence > word.confidence;
+}
+
 export async function retryRuledGrid(canvas, geometry, ocr, { renderCrop, pageNum, dpi, languages, deadline }) {
     if (Date.now() >= deadline) return null;
     const scaleX = canvas.width / geometry.pageWidth;
@@ -150,6 +178,7 @@ export async function retryRuledGrid(canvas, geometry, ocr, { renderCrop, pageNu
         const positioned = readGrid(grid, result.words, scaleX, scaleY);
         if (!positioned || !hasNumericGrid(positioned.table.rows)) return fallback;
         let lowConfidence = false;
+        let uncertainCell = null;
         const cells = original.table.cells.map((row, rowIndex) => row.map((cell, columnIndex) => {
             const prior = original.cellWords[rowIndex][columnIndex];
             const words = positioned.cellWords[rowIndex][columnIndex];
@@ -158,9 +187,17 @@ export async function retryRuledGrid(canvas, geometry, ocr, { renderCrop, pageNu
                 || (hasUncertainGridNumber(prior) && !hasUncertainNumber(words) && NUMERIC_CELL.test(replacement.text))) {
                 return replacement;
             }
+            if (!uncertainCell && prior.length === 1 && words.length === 1 && hasUncertainGridNumber(prior)
+                && differsByUnreadDigit(cell.text, replacement.text)) {
+                uncertainCell = { rowIndex, columnIndex, replacement, word: words[0] };
+            }
             lowConfidence ||= hasUncertainGridNumber(prior);
             return cell;
         }));
+        if (uncertainCell && await confirmGridNumber(crop, clip, uncertainCell.replacement.bbox, uncertainCell.word,
+            { dpi, pageNum, languages, deadline }).catch(() => false)) {
+            cells[uncertainCell.rowIndex][uncertainCell.columnIndex] = uncertainCell.replacement;
+        }
         return { grid, used: original.used, table: { ...original.table, cells, rows: cells.map(row => row.map(cell => cell.text)), lowConfidence } };
     }
     return null;
