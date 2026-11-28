@@ -32,7 +32,7 @@ export function openMupdfDocument(pdfBytes) {
     return mupdf.Document.openDocument(pdfBytes, 'application/pdf');
 }
 
-export function renderMupdfPageToCanvas(mupdfDoc, pageNum, viewport = null) {
+export function renderMupdfPageToCanvas(mupdfDoc, pageNum, viewport = null, clip = null) {
     const page = mupdfDoc.loadPage(pageNum - 1);
     try {
         const [x0, y0, x1, y1] = page.getBounds();
@@ -45,8 +45,26 @@ export function renderMupdfPageToCanvas(mupdfDoc, pageNum, viewport = null) {
         const scale = Number.isFinite(scaleX) && Number.isFinite(scaleY)
             ? Math.max(0.01, (scaleX + scaleY) / 2)
             : 1;
+        const matrix = mupdf.Matrix.scale(scale, scale);
+        if (clip) {
+            const { x, y, width, height } = clip;
+            const pixmap = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, Math.ceil(width * scale), Math.ceil(height * scale)], false);
+            try {
+                pixmap.clear(255);
+                const device = new mupdf.DrawDevice(mupdf.Matrix.identity, pixmap);
+                try {
+                    page.run(device, [scale, 0, 0, scale, -(x + x0) * scale, -(y + y0) * scale]);
+                    device.close();
+                } finally {
+                    device.destroy();
+                }
+                return rgbPixmapToCanvas(pixmap);
+            } finally {
+                pixmap.destroy();
+            }
+        }
         const pixmap = page.toPixmap(
-            mupdf.Matrix.scale(scale, scale),
+            matrix,
             mupdf.ColorSpace.DeviceRGB,
             false,
             true,

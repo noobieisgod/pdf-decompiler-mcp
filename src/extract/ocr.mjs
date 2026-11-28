@@ -268,7 +268,7 @@ async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, d
             height: (swapsAxes ? width : height) * scaleY,
         };
     }
-    return result;
+    return { ...result, correctedRotation: rotation };
 }
 
 export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng', deadline = Date.now() + OCR_TIMEOUT_MS) {

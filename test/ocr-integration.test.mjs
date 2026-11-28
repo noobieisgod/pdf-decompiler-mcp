@@ -6,10 +6,21 @@ import { openMupdfDocument, renderMupdfPageToCanvas } from '../src/backend/mupdf
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
+import { extractScannedTables } from '../src/extract/ocr-tables.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
 import { createCanvas, fillCanvasWhite } from '../src/pdf/canvas.mjs';
 import { buildGermanScan, buildRasterScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
+
+async function openAnnualReport(t) {
+    try {
+        return openMupdfDocument(await fs.readFile(new URL('../evaluation/pdfs/Heavy Test One.pdf', import.meta.url)));
+    } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        t.skip('Local annual report unavailable');
+        return null;
+    }
+}
 
 test('OCR language selection is validated and part of the extraction generation', () => {
     const english = loadConfig({ ocrLanguages: 'eng', ocrPolicy: 'auto' });
@@ -185,7 +196,8 @@ test('OCR retries small scanned pages at a higher resolution and keeps page coor
 
 test('OCR retries a dense full-size scan at the default higher resolution', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
-    const document = openMupdfDocument(await fs.readFile(new URL('../evaluation/pdfs/Heavy Test One.pdf', import.meta.url)));
+    const document = await openAnnualReport(t);
+    if (!document) return;
     t.after(() => document.destroy());
     const page = document.loadPage(2);
     const [x0, y0, x1, y1] = page.getBounds();
@@ -202,6 +214,85 @@ test('OCR retries a dense full-size scan at the default higher resolution', { sk
     const [hit] = (await manager.search({ ...opened, query: 'Corporate Governance', strategy: 'phrase' })).results;
     const box = hit.citation.bbox;
     assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
+});
+
+test('OCR splits a scanned financial spread and cites the exact reported amounts', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = await openAnnualReport(t);
+    if (!document) return;
+    t.after(() => document.destroy());
+    const page = document.loadPage(63);
+    const [x0, y0, x1, y1] = page.getBounds();
+    const native = page.toStructuredText();
+    const reference = JSON.parse(native.asJSON()).blocks.flatMap(block => block.lines || []);
+    native.destroy();
+    page.destroy();
+    const width = Math.round(x1 - x0);
+    const height = Math.round(y1 - y0);
+    const raster = renderMupdfPageToCanvas(document, 64, { width: Math.round(3000 * (x1 - x0) / (y1 - y0)), height: 3000 });
+    const source = path.join(root, 'financial-spread.pdf');
+    await fs.writeFile(source, buildRasterScan(raster, { width, height }));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements, nextCursor } = await manager.getPages({ ...opened, mode: 'text', budget: { estimatedTokens: 32_000 } });
+    assert.equal(nextCursor, null);
+    const tables = elements.filter(element => element.type === 'table');
+    assert.deepEqual(tables.map(table => [table.totalRows, table.totalColumns]), [[15, 5], [13, 5]]);
+    assert.ok(tables[0].bbox.x + tables[0].bbox.width < width / 2 && tables[1].bbox.x > width / 2);
+    assert.ok(elements.filter(element => element.bbox && element.bbox.x + element.bbox.width < width / 2)
+        .every(element => element.readingOrder < tables[1].readingOrder));
+    const consolidated = tables[0].rows.find(row => row[0] === 'Net Income');
+    assert.deepEqual(consolidated, ['Net Income', '1,172,431,759', '837,767,517', '334,664,242', '40%']);
+    for (const query of consolidated.slice(1, 3)) {
+        const [hit] = (await manager.search({ ...opened, query, strategy: 'phrase' })).results;
+        assert.equal(hit.citation.elementId, tables[0].id);
+        const box = hit.citation.bbox;
+        assert.deepEqual(box, tables[0].cells.find(cell => cell.text === query).bbox);
+        const expected = reference.find(line => line.text.trim() === query).bbox;
+        const overlapWidth = Math.min(box.x + box.width, expected.x + expected.w) - Math.max(box.x, expected.x);
+        const overlapHeight = Math.min(box.y + box.height, expected.y + expected.h) - Math.max(box.y, expected.y);
+        assert.ok(overlapWidth > 0 && overlapHeight > 0 && overlapWidth * overlapHeight >= expected.w * expected.h * 0.6);
+    }
+});
+
+test('OCR reads the left half of a synthetic raster spread before the right', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/multi-column.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const slice = renderMupdfPageToCanvas(document, 1, { width: 1224, height: 1584 });
+    const raster = createCanvas(slice.width * 2, slice.height);
+    const ctx = fillCanvasWhite(raster);
+    ctx.drawImage(slice, 0, 0);
+    ctx.drawImage(slice, slice.width, 0);
+    const source = path.join(root, 'two-page-scan.pdf');
+    await fs.writeFile(source, buildRasterScan(raster, { width: 1224, height: 792 }));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+    assert.equal(elements.some(element => element.type === 'table'), false);
+    const left = elements.filter(element => element.bbox?.x < 612);
+    const right = elements.filter(element => element.bbox?.x > 612);
+    assert.match(left.map(element => element.text).join(' '), /LAYOUT HEADING/);
+    assert.match(right.map(element => element.text).join(' '), /LAYOUT HEADING/);
+    assert.ok(left.at(-1).readingOrder < right[0].readingOrder);
+});
+
+test('financial rows stay structured when OCR splits their columns into separate blocks', () => {
+    const canvas = createCanvas(420, 250);
+    fillCanvasWhite(canvas);
+    const rows = [['Item', 'Plan', 'Actual', 'Delta'], ['Alpha', '1420', '2100', '6100'], ['Beta', '1431', '2137', '6183'],
+        ['Gamma', '1442', '2174', '6266'], ['Delta', '1453', '2211', '6349']];
+    const words = rows.flatMap((row, line) => row.map((text, column) => ({
+        text, line, block: column, paragraph: 1, sourceIndex: column * rows.length + line,
+        confidence: line === 2 && column === 3 ? 54 : 96, bbox: { x: 20 + column * 90, y: 20 + line * 17, width: 34, height: 11 },
+    })));
+    const blocks = [...Map.groupBy(words, word => word.block).values()].map(spans => ({ spans }));
+    const [table] = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { words, blocks }, true).tables;
+    assert.deepEqual(table.rows, rows);
+    assert.deepEqual(table.cells[2][3].bbox, words[11].bbox);
+    assert.equal(table.lowConfidence, true);
 });
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {

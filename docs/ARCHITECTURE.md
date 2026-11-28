@@ -36,6 +36,8 @@ Extraction revision 16 extends the resolution retry to dense full-size scans. It
 
 Extraction revision 17 supplies Tesseract with the physical raster DPI at higher resolutions. It uses intersecting rules to recover rectangular table cells from unskewed page scans. OCR words must overlap their assigned cells, and accepted cells retain their original page coordinates.
 
+Extraction revision 18 recognizes the two halves of a raster spread when a clear central gutter separates them. Each crop stays within the raster limit, shares the page OCR time budget, and maps back to the original page. The server preserves left-to-right spread order. Repeated rows with several right-aligned numeric columns can form a borderless table. A warning identifies scanned tables with low-confidence numbers.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

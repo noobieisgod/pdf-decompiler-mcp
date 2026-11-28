@@ -1,4 +1,5 @@
 import { unionBBoxes } from '../model/geometry.mjs';
+import { OCR_MIN_MEAN_CONFIDENCE } from '../config/constants.mjs';
 
 const MAX_RULES = 64;
 const MIN_RULE_LENGTH = 0.075;
@@ -6,6 +7,13 @@ const ENDPOINT_TOLERANCE = 3;
 const MAX_RULE_THICKNESS = 5;
 const MIN_WORD_OVERLAP = 0.8;
 const MIN_CELL_PIXELS = 8;
+const NUMERIC_CELL = /^(?:[+−-]?\(?\p{Nd}+(?:[.,]\p{Nd}+)*[.,]?(?:[%‰]|\))?|N[/.]?M\.?|N\/A|[—–-])$/iu;
+const MIN_FINANCIAL_ROWS = 4;
+const FINANCIAL_COLUMN_TOLERANCE = 5;
+
+function hasUncertainNumber(words) {
+    return words.some(word => /\p{Nd}/u.test(word.text) && word.confidence < OCR_MIN_MEAN_CONFIDENCE);
+}
 
 function scanRules(along, across, isDark) {
     const rules = [];
@@ -98,10 +106,84 @@ function readGrid({ rows, columns }, words, scaleX, scaleY) {
         },
     })));
     return { used, table: { bbox: { x: left / scaleX, y: top / scaleY, width: (right - left) / scaleX, height: (bottom - top) / scaleY },
-        rows: cells.map(row => row.map(cell => cell.text)), cells } };
+        rows: cells.map(row => row.map(cell => cell.text)), cells, lowConfidence: hasUncertainNumber(used) } };
 }
 
-export function extractScannedTables(canvas, geometry, ocr) {
+function makeCell(words) {
+    return { text: words.map(word => word.text).join(' '), bbox: unionBBoxes(words.map(word => word.bbox)) };
+}
+
+function parseFinancialLine(words) {
+    const boundary = words.findLastIndex(word => !NUMERIC_CELL.test(word.text));
+    if (boundary < 0 || words.length - boundary - 1 < 3) return null;
+    const label = words.slice(0, boundary + 1);
+    if (!label.some(word => /\p{L}/u.test(word.text))) return null;
+    const values = words.slice(boundary + 1);
+    if (values.filter(word => /\p{Nd}/u.test(word.text)).length < 3) return null;
+    if (values[0].bbox.x - label.at(-1).bbox.x - label.at(-1).bbox.width < 12) return null;
+    return { words, cells: [label, ...values.map(word => [word])], y: words[0].bbox.y,
+        labelX: words[0].bbox.x, right: values.map(({ bbox }) => bbox.x + bbox.width) };
+}
+
+function financialHeader(line, row) {
+    if (!line || line.length !== row.cells.length || row.y - line[0].bbox.y > 24 || !/\p{L}/u.test(line[0].text)) return null;
+    if (Math.abs(line[0].bbox.x - row.labelX) > FINANCIAL_COLUMN_TOLERANCE) return null;
+    for (let column = 1; column < line.length; column++) {
+        const { x, width } = line[column].bbox;
+        const center = x + width / 2;
+        const right = row.right[column - 1];
+        const left = column === 1 ? row.cells[1][0].bbox.x - 20 : row.right[column - 2] + FINANCIAL_COLUMN_TOLERANCE;
+        if (center < left || center > right + FINANCIAL_COLUMN_TOLERANCE) return null;
+    }
+    return line.map(word => [word]);
+}
+
+function readFinancialTables(lines) {
+    lines.forEach(line => line.sort((a, b) => a.bbox.x - b.bbox.x));
+    lines.sort((a, b) => a[0].bbox.y - b[0].bbox.y);
+    const parsed = lines.map(parseFinancialLine);
+    const found = [];
+    for (let start = 0; start < parsed.length; start++) {
+        const row = parsed[start];
+        if (!row) continue;
+        let end = start + 1;
+        for (; end < parsed.length; end++) {
+            const current = parsed[end];
+            if (!current || current.right.length !== row.right.length || current.y - parsed[end - 1].y > 27
+                || current.y - parsed[end - 1].y < 3 || Math.abs(current.labelX - row.labelX) > FINANCIAL_COLUMN_TOLERANCE
+                || current.right.some((right, index) => Math.abs(right - row.right[index]) > FINANCIAL_COLUMN_TOLERANCE)) break;
+        }
+        if (end - start < MIN_FINANCIAL_ROWS) continue;
+        const body = parsed.slice(start, end).map(item => item.cells);
+        const header = financialHeader(lines[start - 1], row);
+        const continuation = lines[end];
+        const last = parsed[end - 1];
+        if (continuation && !parsed[end] && continuation[0].block === last.words[0].block && continuation[0].paragraph === last.words[0].paragraph
+            && continuation[0].bbox.y - last.y <= 10 && Math.abs(continuation[0].bbox.x - last.labelX) <= FINANCIAL_COLUMN_TOLERANCE
+            && continuation.at(-1).bbox.x + continuation.at(-1).bbox.width < last.cells[1][0].bbox.x - 12) body.at(-1)[0].push(...continuation);
+        const all = header ? [header, ...body] : body;
+        const cells = all.map(line => line.map(makeCell));
+        const bbox = unionBBoxes(cells.flat().map(cell => cell.bbox));
+        const used = all.flat(2);
+        if (bbox) found.push({ used, table: { bbox, rows: cells.map(line => line.map(cell => cell.text)), cells,
+            headerRows: Number(Boolean(header)), lowConfidence: hasUncertainNumber(used) } });
+        start = end - 1;
+    }
+    return found;
+}
+
+function groupByRowCenter(words) {
+    const center = ({ bbox }) => bbox.y + bbox.height / 2;
+    const rows = [];
+    for (const word of words.sort((a, b) => center(a) - center(b))) {
+        const row = rows.at(-1);
+        if (row && center(word) - center(row[0]) <= 4) row.push(word);
+        else rows.push([word]);
+    }
+    return rows;
+}
+
+export function extractScannedTables(canvas, geometry, ocr, allowFinancialLayout = false) {
     const used = new Set();
     const tables = [];
     const accepted = [];
@@ -113,6 +195,21 @@ export function extractScannedTables(canvas, geometry, ocr) {
         accepted.push(grid);
         tables.push(result.table);
         result.used.forEach(word => used.add(word));
+    }
+    if (allowFinancialLayout) {
+        const remaining = () => ocr.words.filter(word => word.bbox && !used.has(word));
+        const lines = [...Map.groupBy(remaining(), word => `${word.block}:${word.paragraph}:${word.line}`).values()];
+        for (const read of [() => readFinancialTables(lines), () => readFinancialTables(groupByRowCenter(remaining()))]) {
+            for (const result of read()) {
+                if (tables.some(table => {
+                    const { x, y, width, height } = result.table.bbox;
+                    const box = table.bbox;
+                    return x < box.x + box.width && x + width > box.x && y < box.y + box.height && y + height > box.y;
+                })) continue;
+                tables.push(result.table);
+                result.used.forEach(word => used.add(word));
+            }
+        }
     }
     if (!tables.length) return ocr;
     const blocks = ocr.blocks.flatMap(block => {

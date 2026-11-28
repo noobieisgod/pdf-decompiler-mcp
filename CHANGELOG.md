@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Read both sides of scanned spreads separately and recover aligned financial rows with cell citations.
 - Extract cells from ruled scanned tables and highlight a unique matching cell in keyword and phrase search.
 - Recover dense scans with a higher-resolution OCR retry.
 - Straighten slightly skewed scans for OCR while preserving original page citations.

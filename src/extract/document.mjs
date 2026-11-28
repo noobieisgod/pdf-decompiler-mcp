@@ -538,7 +538,8 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
         for (let idx = 0; idx < raw.rawTables.length; idx += 1) {
             const id = `TABLE_${globalTableIdx++}`;
             tableIdMap.set(idx, id);
-            tableResults.push({ id, data: raw.rawTables[idx].rows, cells: raw.rawTables[idx].cells || null, bbox: raw.rawTables[idx].bbox });
+            const table = raw.rawTables[idx];
+            tableResults.push({ id, data: table.rows, cells: table.cells || null, bbox: table.bbox, headerRows: table.headerRows, lowConfidence: table.lowConfidence });
         }
 
         const annotations = (raw.annotations ?? []).map(annotation => ({ ...annotation }));
@@ -600,6 +601,7 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
             textBlocks: raw.textBlocks || [],
             images: imageResults,
             tables: tableResults,
+            ocrSpreadBoundary: raw.ocrSpreadBoundary,
             pageImage,
             links: linkResults,
             annotations,

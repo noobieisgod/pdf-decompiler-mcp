@@ -6,6 +6,7 @@ import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } fro
 import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
 import { runDeskewedOcr } from './ocr-deskew.mjs';
 import { extractScannedTables } from './ocr-tables.mjs';
+import { recognizeScannedSpread } from './ocr-spread.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
@@ -60,6 +61,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     let ocrAttempted = false;
     let ocrAccepted = false;
     let ocrReason = null;
+    let ocrSpreadBoundary = null;
     const ocrRegions = { attempted: 0, accepted: 0, rejected: 0 };
     const ocrDiagnostics = [];
     let cachedFullCanvas = null;
@@ -106,7 +108,10 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     return result.ok && pageProfile.visualType === 'raster' ? extractScannedTables(canvas, geometry, result) : result;
                 };
                 const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
-                let ocrResult = await recognize(initialRaster);
+                const spread = pageProfile.visualType === 'raster' && renderPageCanvasOverride
+                    ? await recognizeScannedSpread(initialRaster, viewport, renderPageCanvasOverride, maxOcrRetryDim, pageNum, ocrLanguages, deadline).catch(() => null)
+                    : null;
+                let ocrResult = spread ?? await recognize(initialRaster);
                 if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster') {
                     let lastDimension = Math.max(initialRaster.width, initialRaster.height);
                     for (const dimension of [maxOcrDim, maxOcrRetryDim]) {
@@ -130,6 +135,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     ocrRegions.accepted += 1;
                     ocrDiagnostics.push(...(ocrResult.diagnostics || []));
                     pageText = ocrResult.text;
+                    ocrSpreadBoundary = ocrResult.spreadBoundary ?? null;
                     rawTextBlocks = ocrResult.blocks || [];
                     rawTables = ocrResult.tables || [];
                 } else {
@@ -420,6 +426,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         ocrReason,
         ocrRegions,
         ocrDiagnostics: ocrDiagnostics.slice(0, 32),
+        ocrSpreadBoundary,
         text: pageText,
         textBlocks: rawTextBlocks,
         annotations,

@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 17;
+export const EXTRACTION_REVISION = 18;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -78,6 +78,17 @@ function insertionHint(blocks, bbox, sourceIndex = 0) {
     if (!bbox || !blocks.length) return (blocks.length + 1) * 1000 + sourceIndex;
     const index = blocks.findIndex(block => block.bbox && block.bbox.y > bbox.y);
     return (index < 0 ? blocks.length : index) * 1000 + 500 + sourceIndex;
+}
+
+function spreadTableHint(blocks, bbox, boundary, sourceIndex) {
+    if (!bbox || !boundary) return insertionHint(blocks, bbox, sourceIndex);
+    const left = bbox.x + bbox.width / 2 < boundary;
+    const sameSide = block => block.bbox && (block.bbox.x + block.bbox.width / 2 < boundary) === left;
+    const next = blocks.findIndex(block => sameSide(block) && block.bbox.y > bbox.y);
+    if (next >= 0) return next * 1000 - 500 + sourceIndex;
+    const last = blocks.findLastIndex(sameSide);
+    if (last >= 0) return last * 1000 + 500 + sourceIndex;
+    return (left ? -500 : blocks.length * 1000 + 500) + sourceIndex;
 }
 
 export function extractionFingerprint(config, dependencyFingerprint) {
@@ -203,6 +214,7 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
             const rows = table.data || table.rows || [];
             const bbox = normalizeBBox(table.bbox, width, height);
             if (table.bbox && !bbox) pageWarnings.push({ code: 'invalid_geometry', elementId: id });
+            if (table.lowConfidence) pageWarnings.push({ code: 'ocr_table_numeric_uncertainty', elementId: id, message: 'Some numbers in this scanned table had low OCR confidence.' });
             const cells = rows.flatMap((row, rowIndex) => row.map((value, columnIndex) => {
                 const rawCell = table.cells?.[rowIndex]?.[columnIndex];
                 const cellBbox = normalizeBBox(rawCell?.bbox, width, height);
@@ -231,7 +243,7 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
                 citation: citation(documentId, generation, rawPage.page, id, tableBbox),
                 ...elementFingerprints('table', rawPage.page, tableBbox, rows),
             };
-            addElement(pageElements, record, insertionHint(canonicalBlocks, tableBbox, index));
+            addElement(pageElements, record, spreadTableHint(canonicalBlocks, tableBbox, rawPage.ocrSpreadBoundary, index));
         });
 
         const imageRecords = [...(rawPage.images || [])];
