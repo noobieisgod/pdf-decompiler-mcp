@@ -295,6 +295,23 @@ test('financial rows stay structured when OCR splits their columns into separate
     assert.equal(table.lowConfidence, true);
 });
 
+test('an OCR number split into two words stays in its original table column', () => {
+    const canvas = createCanvas(420, 250);
+    fillCanvasWhite(canvas);
+    const rows = [['Item', 'Plan', 'Actual', 'Delta'], ['Alpha', '1420', '2100', '6100'], ['Beta', '1431', '21,37 000', '6183'],
+        ['Gamma', '1442', '2174', '6266'], ['Delta', '1453', '2211', '6349']];
+    const words = rows.flatMap((row, line) => row.flatMap((text, column) => text.split(' ').map((word, fragment, items) => ({
+        text: word, line, block: 1, paragraph: 1, confidence: 96,
+        bbox: { x: 20 + column * 90 + fragment * 17, y: 20 + line * 17, width: 34 / items.length, height: 11 },
+    })))).map((word, sourceIndex) => ({ ...word, sourceIndex }));
+    const blocks = [{ spans: words }];
+    const { tables, blocks: remaining } = extractScannedTables(canvas, { pageWidth: canvas.width, pageHeight: canvas.height }, { words, blocks }, true);
+    assert.equal(tables.length, 1);
+    assert.deepEqual(tables[0].rows, rows);
+    assert.equal(tables[0].lowConfidence, true);
+    assert.deepEqual(remaining, []);
+});
+
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');
     const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], extractionTimeoutMs: 50_000 })).init();

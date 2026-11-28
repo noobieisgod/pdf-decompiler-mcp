@@ -3,7 +3,7 @@ import { normalizeBBox, unionBBoxes } from './geometry.mjs';
 
 export const SCHEMA_VERSION = '3.0.0';
 export const CANONICAL_FORMAT_VERSION = 4;
-export const EXTRACTION_REVISION = 18;
+export const EXTRACTION_REVISION = 19;
 
 function cleanText(text) {
     return String(text ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
@@ -214,7 +214,7 @@ export function buildCanonicalModel(pdfBytes, raw, config, dependencyFingerprint
             const rows = table.data || table.rows || [];
             const bbox = normalizeBBox(table.bbox, width, height);
             if (table.bbox && !bbox) pageWarnings.push({ code: 'invalid_geometry', elementId: id });
-            if (table.lowConfidence) pageWarnings.push({ code: 'ocr_table_numeric_uncertainty', elementId: id, message: 'Some numbers in this scanned table had low OCR confidence.' });
+            if (table.lowConfidence) pageWarnings.push({ code: 'ocr_table_numeric_uncertainty', elementId: id, message: 'Some numbers in this scanned table had low OCR confidence or ambiguous spacing.' });
             const cells = rows.flatMap((row, rowIndex) => row.map((value, columnIndex) => {
                 const rawCell = table.cells?.[rowIndex]?.[columnIndex];
                 const cellBbox = normalizeBBox(rawCell?.bbox, width, height);

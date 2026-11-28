@@ -138,6 +138,23 @@ function financialHeader(line, row) {
     return line.map(word => [word]);
 }
 
+function alignFinancialLine(words, anchor) {
+    const cutoff = anchor.cells[1][0].bbox.x - 20;
+    const label = words.filter(word => word.bbox.x + word.bbox.width < cutoff);
+    if (!label.length || !label.some(word => /\p{L}/u.test(word.text))) return null;
+    if (Math.abs(label[0].bbox.x - anchor.labelX) > FINANCIAL_COLUMN_TOLERANCE) return null;
+    const values = anchor.right.map(() => []);
+    const boundaries = anchor.right.slice(0, -1).map((right, index) => (right + anchor.right[index + 1]) / 2);
+    for (const word of words.slice(label.length)) {
+        const right = word.bbox.x + word.bbox.width;
+        const index = boundaries.findIndex(boundary => right < boundary);
+        values[index < 0 ? values.length - 1 : index].push(word);
+    }
+    if (values.some((cell, index) => !cell.length || Math.abs(cell.at(-1).bbox.x + cell.at(-1).bbox.width - anchor.right[index]) > FINANCIAL_COLUMN_TOLERANCE)) return null;
+    if (values.filter(cell => cell.some(word => /\p{Nd}/u.test(word.text) && NUMERIC_CELL.test(word.text))).length < 3) return null;
+    return { words, cells: [label, ...values], y: label[0].bbox.y };
+}
+
 function readFinancialTables(lines) {
     lines.forEach(line => line.sort((a, b) => a.bbox.x - b.bbox.x));
     lines.sort((a, b) => a[0].bbox.y - b[0].bbox.y);
@@ -146,18 +163,24 @@ function readFinancialTables(lines) {
     for (let start = 0; start < parsed.length; start++) {
         const row = parsed[start];
         if (!row) continue;
+        const aligned = [row];
+        let ambiguousRows = 0;
         let end = start + 1;
         for (; end < parsed.length; end++) {
             const current = parsed[end];
-            if (!current || current.right.length !== row.right.length || current.y - parsed[end - 1].y > 27
-                || current.y - parsed[end - 1].y < 3 || Math.abs(current.labelX - row.labelX) > FINANCIAL_COLUMN_TOLERANCE
-                || current.right.some((right, index) => Math.abs(right - row.right[index]) > FINANCIAL_COLUMN_TOLERANCE)) break;
+            const exactColumns = current && current.right.length === row.right.length
+                && Math.abs(current.labelX - row.labelX) <= FINANCIAL_COLUMN_TOLERANCE
+                && current.right.every((right, index) => Math.abs(right - row.right[index]) <= FINANCIAL_COLUMN_TOLERANCE);
+            const next = exactColumns ? current : alignFinancialLine(lines[end], row);
+            if (!next || next.y - aligned.at(-1).y > 27 || next.y - aligned.at(-1).y < 3) break;
+            if (!exactColumns) ambiguousRows += 1;
+            aligned.push(next);
         }
-        if (end - start < MIN_FINANCIAL_ROWS) continue;
-        const body = parsed.slice(start, end).map(item => item.cells);
+        if (aligned.length < MIN_FINANCIAL_ROWS || aligned.length - ambiguousRows < MIN_FINANCIAL_ROWS - 1) continue;
+        const body = aligned.map(item => item.cells);
         const header = financialHeader(lines[start - 1], row);
         const continuation = lines[end];
-        const last = parsed[end - 1];
+        const last = aligned.at(-1);
         if (continuation && !parsed[end] && continuation[0].block === last.words[0].block && continuation[0].paragraph === last.words[0].paragraph
             && continuation[0].bbox.y - last.y <= 10 && Math.abs(continuation[0].bbox.x - last.labelX) <= FINANCIAL_COLUMN_TOLERANCE
             && continuation.at(-1).bbox.x + continuation.at(-1).bbox.width < last.cells[1][0].bbox.x - 12) body.at(-1)[0].push(...continuation);
@@ -166,7 +189,7 @@ function readFinancialTables(lines) {
         const bbox = unionBBoxes(cells.flat().map(cell => cell.bbox));
         const used = all.flat(2);
         if (bbox) found.push({ used, table: { bbox, rows: cells.map(line => line.map(cell => cell.text)), cells,
-            headerRows: Number(Boolean(header)), lowConfidence: hasUncertainNumber(used) } });
+            headerRows: Number(Boolean(header)), lowConfidence: ambiguousRows > 0 || hasUncertainNumber(used) } });
         start = end - 1;
     }
     return found;
