@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recover text from sideways and upside-down scans while citing the original page coordinates.
+
 - Select local Tesseract language packs for scanned PDFs and validate OCR text across scripts.
 
 - Center search excerpts on the cited match so surrounding text cannot hide the evidence.

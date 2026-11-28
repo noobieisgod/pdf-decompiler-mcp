@@ -26,7 +26,7 @@ Internal links use named, explicit, or unresolved destination records. Parser-pr
 
 Visual classification reuses one bounded operator-list pass. Raster coverage is derived from image placements. Vector coverage is conservative and marked exact, approximate, or unknown. Shadings, nested forms, masks, clipping, and uncertain transforms may produce `visual_unknown`. Normal decomposition never renders a full page solely to classify it. A vector-only or unknown visual page receives a generation-bound deferred page-visual resource.
 
-Block roles are `heading`, `text`, `list`, or `code`. OCR origin is represented independently from role and always uses `extractionMethod: "ocr"`. Image-region OCR points to the canonical figure that produced it and is ordered directly after that figure. Page OCR reports region counts and accepted, partial, rejected, or not-attempted status. Invalid OCR source references and rejected OCR are removed instead of becoming dangling or searchable public records.
+Block roles are `heading`, `text`, `list`, or `code`. OCR origin is represented independently from role and always uses `extractionMethod: "ocr"`. Image-region OCR points to the canonical figure that produced it and is ordered directly after that figure. Page OCR reports region counts and accepted, partial, rejected, or not-attempted status. Invalid OCR source references and rejected OCR are removed instead of becoming dangling or searchable public records. Extraction revision 11 lets Tesseract's optional orientation model suggest a retry after rejected OCR. Accepted words retain their upright reading order and are mapped back to the original displayed-page coordinates.
 
 ## Canonical identity contract
 

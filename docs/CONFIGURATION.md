@@ -37,7 +37,7 @@ Boolean variables accept `1` or `true`.
 
 The executable also accepts `--allow-root`, `--deny-root`, `--cache-mode`, `--cache-directory`, `--ocr-languages`, `--unrestricted-local-access`, `--allow-unc`, and `--debug`. Multiple roots may follow one root option until the next option. The MCPB manifest uses this form so the host can pass user-selected directories without weakening the default policy.
 
-Run `tesseract --list-langs` to see installed OCR models. Set `--ocr-languages deu+eng` or the environment equivalent for German and English scans. Language order can affect recognition. If an explicitly selected language pack is missing, opens with OCR enabled return `ocr_language_unavailable`. Restart the server after installing additional models. Native text stays available with `ocrPolicy: "off"`.
+Run `tesseract --list-langs` to see installed OCR models. Set `--ocr-languages deu+eng` or the environment equivalent for German and English scans. Language order can affect recognition. If an explicitly selected language pack is missing, opens with OCR enabled return `ocr_language_unavailable`. Install the optional `osd` model to recover text from sideways and upside-down scans. Restart the server after installing additional models and reopen previously extracted PDFs with `refresh: true`. Native text stays available with `ocrPolicy: "off"`.
 
 Example:
 

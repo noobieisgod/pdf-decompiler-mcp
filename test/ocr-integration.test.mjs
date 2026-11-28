@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import { openMupdfDocument, renderMupdfPageToCanvas } from '../src/backend/mupdf-runtime.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
-import { buildGermanScan } from './fixtures/generate-fixtures.mjs';
+import { buildGermanScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
 
 test('OCR language selection is validated and part of the extraction generation', () => {
@@ -48,6 +49,37 @@ test('German OCR preserves umlauts and yields searchable citations', { skip: pro
     assert.match(text, /Öffnungszeiten am Samstag/);
     const [hit] = (await manager.search({ ...opened, query: 'Öffnungszeiten', strategy: 'phrase' })).results;
     assert.ok(hit.citation.bbox?.width > 0);
+});
+
+test('OCR recovers sideways and upside-down scans with citations in original coordinates', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    if (missingTesseractLanguages('osd').length) return t.skip('Tesseract orientation data unavailable');
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const source = path.join(root, 'rotated-scan.pdf');
+    const bytes = buildRotatedScan();
+    await fs.writeFile(source, bytes);
+    const document = openMupdfDocument(bytes);
+    t.after(() => document.destroy());
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+    for (const page of [1, 2, 3]) {
+        const raster = renderMupdfPageToCanvas(document, page);
+        const blocks = elements.filter(element => element.textSource === 'ocr' && element.page === page);
+        const text = blocks.map(block => block.text).join(' ');
+        assert.match(text, /OCR SUCCESS TEXT/, `page ${page}`);
+        assert.match(text, /DETERMINISTIC EVIDENCE/, `page ${page}`);
+        for (const block of blocks) {
+            assert.deepEqual(block.citation.bbox, block.bbox);
+            const { x, y, width, height } = block.bbox;
+            assert.ok(x >= 0 && y >= 0 && x + width <= raster.width && y + height <= raster.height);
+            assert.equal(height > width, page !== 2, `page ${page}`);
+            const pixels = raster.getContext('2d').getImageData(Math.floor(x), Math.floor(y), Math.ceil(width), Math.ceil(height)).data;
+            assert.ok(pixels.some((channel, index) => index % 4 === 0 && channel < 128), `page ${page} citation covers visible text`);
+        }
+    }
+    const search = await manager.search({ ...opened, query: 'DETERMINISTIC EVIDENCE', strategy: 'phrase', granularity: 'page' });
+    assert.deepEqual(new Set(search.results.map(hit => hit.page)), new Set([1, 2, 3]));
 });
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {

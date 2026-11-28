@@ -192,16 +192,22 @@ function rasterText(lines, { width = 600, height = 800, scale = 7, noisy = false
     return { width, height, data };
 }
 
-function readableRasterText(lines) {
+function readableRasterText(lines, rotation = 0) {
     GlobalFonts.registerFromPath(path.resolve('node_modules/pdfjs-dist/standard_fonts/LiberationSans-Regular.ttf'), 'FixtureSans');
-    const width = 1200;
-    const height = 1600;
+    const sideways = rotation === 90 || rotation === 270;
+    const width = sideways ? 1600 : 1200;
+    const height = sideways ? 1200 : 1600;
     const canvas = createCanvas(width, height);
     const context = canvas.getContext('2d');
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
     context.fillStyle = '#000';
     context.font = '72px FixtureSans';
+    if (rotation) {
+        context.translate(width / 2, height / 2);
+        context.rotate(rotation * Math.PI / 180);
+        context.translate(-600, -800);
+    }
     lines.forEach((line, index) => context.fillText(line, 80, 220 + index * 150));
     const rgba = context.getImageData(0, 0, width, height).data;
     const data = Buffer.alloc(width * height * 3);
@@ -216,6 +222,16 @@ function readableRasterText(lines) {
 export function buildGermanScan() {
     const image = readableRasterText(['Größe und Übersicht', 'Straße mit süßen Äpfeln', 'Öffnungszeiten am Samstag']);
     return buildFixturePdf([{ images: [{ ...image, x: 0, y: 0, drawWidth: 612, drawHeight: 792 }] }]);
+}
+
+export function buildRotatedScan() {
+    return buildFixturePdf([90, 180, 270].map(rotation => {
+        const image = readableRasterText(['OCR SUCCESS TEXT', 'DETERMINISTIC EVIDENCE', 'CHECK THE SOURCE PAGE'], rotation);
+        const sideways = rotation !== 180;
+        const width = sideways ? 792 : 612;
+        const height = sideways ? 612 : 792;
+        return { width, height, images: [{ ...image, x: 0, y: 0, drawWidth: width, drawHeight: height }] };
+    }));
 }
 
 function photographRaster() {

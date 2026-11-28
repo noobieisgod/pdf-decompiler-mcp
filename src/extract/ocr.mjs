@@ -1,7 +1,8 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawn, spawnSync } from 'child_process';
+import { execFile, spawnSync } from 'child_process';
+import { promisify } from 'node:util';
 
 import {
     OCR_MAX_REPEATED_RATIO,
@@ -18,6 +19,9 @@ import {
 } from '../config/constants.mjs';
 import { unionBBoxes } from '../model/geometry.mjs';
 
+const runCommand = promisify(execFile);
+const OCR_TIMEOUT_MS = 30_000;
+const OSD_TIMEOUT_MS = 3_000;
 let tesseractAvailableCache;
 let installedLanguages;
 const UNSPACED_CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -178,43 +182,70 @@ function parseTsv(value, geometry) {
     return { words, blocks, text: blocks.map(block => block.text).join('\n\n') };
 }
 
+async function readOcr(inputPath, geometry, languages, timeout) {
+    const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', '6', '-c', 'tessedit_create_tsv=1'], {
+        windowsHide: true, timeout, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8',
+    });
+    const { words, blocks, text } = parseTsv(stdout, geometry);
+    const cleaned = text.trim();
+    const quality = ocrTextLooksGood(cleaned);
+    const confidence = ocrConfidenceStats(words);
+    return { ok: quality.ok && confidence.ok, text: cleaned, blocks, words,
+        reason: quality.ok ? confidence.reason : quality.reason, diagnostics: confidence.diagnostics, confidence };
+}
+
+async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, deadline) {
+    const timeLeft = deadline - Date.now();
+    if (timeLeft <= OSD_TIMEOUT_MS) return null;
+    const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', 'osd', '--psm', '0', '-c', 'min_characters_to_try=20'], {
+        windowsHide: true, timeout: OSD_TIMEOUT_MS, encoding: 'utf8',
+    });
+    const rotation = Number(/^Rotate:\s*(90|180|270)\s*$/m.exec(stdout)?.[1]);
+    const confidence = Number(/^Orientation confidence:\s*([\d.]+)/m.exec(stdout)?.[1]);
+    if (!rotation || !(confidence > 0)) return null;
+
+    const { createCanvas, loadImage } = await import('@napi-rs/canvas');
+    const image = await loadImage(pngBytes);
+    const swapsAxes = rotation !== 180;
+    const canvas = createCanvas(swapsAxes ? image.height : image.width, swapsAxes ? image.width : image.height);
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(rotation * Math.PI / 180);
+    ctx.drawImage(image, -image.width / 2, -image.height / 2);
+    await fs.promises.writeFile(inputPath, await canvas.encode('png'));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    const result = await readOcr(inputPath, { regionId: geometry?.regionId, ocrSource: geometry?.ocrSource }, languages, remaining);
+    if (!result.ok) return null;
+
+    // Map boxes back to the original image only after ordering words in upright space.
+    const scaleX = (geometry?.pageWidth || image.width) / image.width;
+    const scaleY = (geometry?.pageHeight || image.height) / image.height;
+    for (const item of [...result.words, ...result.blocks]) {
+        if (!item.bbox) continue;
+        const { x, y, width, height } = item.bbox;
+        const left = rotation === 90 ? y : image.width - (rotation === 180 ? x + width : y + height);
+        const top = rotation === 270 ? x : image.height - (rotation === 180 ? y + height : x + width);
+        item.bbox = {
+            x: (geometry?.x || 0) + left * scaleX,
+            y: (geometry?.y || 0) + top * scaleY,
+            width: (swapsAxes ? height : width) * scaleX,
+            height: (swapsAxes ? width : height) * scaleY,
+        };
+    }
+    return result;
+}
+
 export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng') {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-decompiler-ocr-'));
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
         fs.writeFileSync(inputPath, pngBytes);
-        const tsv = await new Promise((resolve, reject) => {
-            const proc = spawn('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', '6', '-c', 'tessedit_create_tsv=1'], { windowsHide: true });
-            const chunks = [];
-            const errChunks = [];
-            proc.stdout.on('data', data => chunks.push(data));
-            proc.stderr.on('data', data => errChunks.push(data));
-            const timer = setTimeout(() => {
-                proc.kill();
-                reject(new Error('Tesseract timed out'));
-            }, 30000);
-            proc.on('close', code => {
-                clearTimeout(timer);
-                if (code !== 0) {
-                    reject(new Error(Buffer.concat(errChunks).toString().trim() || `tesseract exited with status ${code}`));
-                } else {
-                    resolve(Buffer.concat(chunks).toString('utf8'));
-                }
-            });
-            proc.on('error', (err) => {
-                clearTimeout(timer);
-                reject(err);
-            });
-        });
-        const parsed = parseTsv(tsv, geometry);
-        const cleaned = parsed.text.trim();
-        const quality = ocrTextLooksGood(cleaned);
-        const confidence = ocrConfidenceStats(parsed.words);
-        const diagnostics = confidence.diagnostics;
-        if (!quality.ok || !confidence.ok) {
-            return { ok: false, text: cleaned, blocks: parsed.blocks, words: parsed.words, reason: quality.ok ? confidence.reason : quality.reason, diagnostics, confidence };
-        }
-        return { ok: true, text: cleaned, blocks: parsed.blocks, words: parsed.words, reason: null, diagnostics, confidence };
+        const deadline = Date.now() + OCR_TIMEOUT_MS;
+        const result = await readOcr(inputPath, geometry, languages, OCR_TIMEOUT_MS);
+        if (result.ok) return result;
+        const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, deadline).catch(() => null);
+        return rotated ?? result;
     } catch {
         return { ok: false, text: '', reason: 'OCR process failed' };
     } finally {
