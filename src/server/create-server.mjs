@@ -192,7 +192,7 @@ export function createServer(manager) {
 
     server.registerTool('pdf_open', {
         title: 'Open and decompose PDF',
-        description: 'Open an allowed local or HTTPS PDF, decompose it under hard bounds, and return its exact extraction generation. Continue partial work with the returned cursor.',
+        description: 'Open an allowed local or HTTPS PDF and return its exact extraction generation. To add selected pages, pass pages with the active documentId, extractionFingerprint, and sourceId without source. Use the returned cursor to continue through all missing pages.',
         inputSchema: OpenSchema,
         outputSchema: OutputSchemas.pdf_open,
         annotations: READ_ONLY,

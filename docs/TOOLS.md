@@ -12,7 +12,9 @@ Completion fields are independent:
 
 ## `pdf_open`
 
-Accepts a local path or HTTPS source, optional `sourceLabel`, page intervals, OCR policy, refresh flag, image dimension, or partial-decomposition cursor. Every successful new open returns a distinct random process-local `sourceId` and safe descriptor, even when identical bytes share the same document ID and canonical generation. Reopen the source with explicit page intervals to add only the missing pages in that selection. The decomposition cursor can still fill all remaining pages and requires its original source handle. Restart any retrieval cursor issued against a partial generation after adding pages. An extraction cursor does not make the open response retrieval-incomplete, so `resultComplete` remains true.
+Accepts a local path or HTTPS source, optional `sourceLabel`, page intervals, OCR policy, refresh flag, image dimension, or partial-decomposition cursor. Every successful new source open returns a distinct random process-local `sourceId` and safe descriptor, even when identical bytes share the same document ID and canonical generation.
+
+To add selected pages without reading or downloading the PDF again, pass `pages`, `documentId`, `extractionFingerprint`, and an active `sourceId`. Omit `source`. The call keeps the same handle, source label, and OCR policy, so one close releases the handle after any number of selections. To fill all remaining pages, use the decomposition cursor with its original handle. Restart any retrieval cursor issued against a partial generation after adding pages. An extraction cursor does not make the open response retrieval-incomplete, so `resultComplete` remains true.
 
 ## `pdf_document_info`
 

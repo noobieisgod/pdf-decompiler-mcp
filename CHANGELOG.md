@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add selected pages to an active PDF without loading the source again or opening another handle.
+
 ## 3.1.0
 
 - Updated the MCP SDK, Zod, and packaging dependencies to patched versions.

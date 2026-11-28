@@ -231,6 +231,7 @@ export class DocumentManager {
 
     async open(args) {
         if (args.cursor) return this.continueOpen(args);
+        if (args.source === undefined && args.sourceId) return this.openFromHandle(args);
         const loaded = await loadPdfSource(args.source, this.config);
         const descriptor = this.sourceDescriptor(loaded, args.sourceLabel);
         const documentId = `doc_${sha256(loaded.bytes)}`;
@@ -246,14 +247,9 @@ export class DocumentManager {
         if (active) {
             if (active.closing) throw new PdfDecompilerError('closed_document', 'The document generation is closing.');
             if (args.refresh) throw new PdfDecompilerError('active_generation', 'Close the active extraction generation before refreshing it.');
-            const requestedPages = openScopePages(args.pages, active.model.totalPages);
-            const processed = new Set(active.model.pages.map(page => page.number));
-            const missing = args.pages ? requestedPages.filter(page => !processed.has(page)) : [];
-            if (missing.length) {
-                await this.extendOpen(active, pageIntervals(missing), args.maxImageDimension);
-            }
+            const scope = await this.openActiveScope(active, args);
             this.addSourceHandle(active, descriptor);
-            return this.openResult(active, descriptor, { cacheHit: missing.length === 0, requestedPages });
+            return this.openResult(active, descriptor, scope);
         }
         if (!args.refresh && this.config.cache.mode === 'persistent') {
             const cached = await this.cache.loadGeneration(documentId, generation, { loadBm25: false });
@@ -283,6 +279,33 @@ export class DocumentManager {
         this.addSourceHandle(state, descriptor);
         state.diagnostics = extracted.diagnostics;
         return this.openResult(state, descriptor, { cacheHit: false, requestedPages: openScopePages(args.pages, state.model.totalPages) });
+    }
+
+    async openFromHandle(args) {
+        if (!args.documentId || !args.extractionFingerprint || !args.pages) {
+            throw new PdfDecompilerError('invalid_open_context', 'Opening selected pages by handle requires documentId, extractionFingerprint, sourceId, and pages.');
+        }
+        const key = stateKey(args.documentId, args.extractionFingerprint);
+        return this.withOpenLock(key, async () => {
+            const state = this.states.get(key);
+            const descriptor = state?.handles.get(args.sourceId);
+            if (!descriptor || state.closing) throw new PdfDecompilerError('SOURCE_HANDLE_UNKNOWN', 'The source handle is unavailable.');
+            if (args.refresh) throw new PdfDecompilerError('active_generation', 'Close the active extraction generation before refreshing it.');
+            if (args.sourceLabel !== undefined || (args.ocrPolicy && args.ocrPolicy !== state.extractionConfig.ocrPolicy)) {
+                throw new PdfDecompilerError('invalid_open_context', 'A source handle uses its existing source label and OCR policy.');
+            }
+            const scope = await this.openActiveScope(state, args);
+            return this.openResult(state, descriptor, scope);
+        });
+    }
+
+    async openActiveScope(state, { pages, maxImageDimension }) {
+        const requestedPages = openScopePages(pages, state.model.totalPages);
+        if (!pages) return { cacheHit: true, requestedPages };
+        const processed = new Set(state.model.pages.map(page => page.number));
+        const missing = requestedPages.filter(page => !processed.has(page));
+        if (missing.length) await this.extendOpen(state, pageIntervals(missing), maxImageDimension);
+        return { cacheHit: missing.length === 0, requestedPages };
     }
 
     openResult(state, descriptor, { cacheHit, requestedPages = [] }) {

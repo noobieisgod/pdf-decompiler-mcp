@@ -90,6 +90,32 @@ test('concurrent scoped opens add only missing pages to the shared document', as
     await assert.rejects(manager.getPages({ ...completed, cursor: limited.nextCursor }), { code: 'changed_cursor_arguments' });
 });
 
+test('an active source handle adds selected pages after the original PDF is unavailable', async t => {
+    const { root, config } = await temporaryConfig(t, { cacheMode: 'none' });
+    const source = path.join(root, 'handle.pdf');
+    await fs.writeFile(source, buildSyntheticPdf({ pages: ['First page', 'Skipped page', 'Selected page', 'Last page'] }));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source, ocrPolicy: 'off', pages: [{ start: 1, end: 1 }] });
+    const { documentId, extractionFingerprint, sourceId } = opened;
+    const selection = { documentId, extractionFingerprint, sourceId, pages: [{ start: 3, end: 3 }] };
+    await fs.unlink(source);
+    await assert.rejects(manager.open({ ...selection, sourceId: '00000000-0000-4000-8000-000000000000' }), { code: 'SOURCE_HANDLE_UNKNOWN' });
+    await assert.rejects(manager.open({ ...selection, ocrPolicy: 'required' }), { code: 'invalid_open_context' });
+    const [added, repeated] = await Promise.all([manager.open(selection), manager.open(selection)]);
+    assert.equal(added.sourceId, sourceId);
+    assert.equal(added.cacheHit, false);
+    assert.equal(added.processedPages, 2);
+    assert.equal(added.completion.requestedScopeComplete, true);
+    assert.equal(added.completion.documentComplete, false);
+    assert.equal(repeated.cacheHit, true);
+    const info = await manager.documentInfo(selection);
+    assert.deepEqual(info.pages.map(page => page.number), [1, 3]);
+    assert.deepEqual(info.activeSources.map(descriptor => descriptor.sourceId), [sourceId]);
+    assert.equal((await manager.closeDocument(selection)).remainingHandles, 0);
+    await assert.rejects(manager.open(selection), { code: 'SOURCE_HANDLE_UNKNOWN' });
+});
+
 test('decomposition records visual pages without eager page-render assets', async t => {
     const { root, config } = await temporaryConfig(t, { cacheMode: 'none' });
     const source = path.join(root, 'visual.pdf');
