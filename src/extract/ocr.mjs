@@ -25,9 +25,11 @@ const runCommand = promisify(execFile);
 const OCR_TIMEOUT_MS = 30_000;
 const OSD_TIMEOUT_MS = 3_000;
 const OCR_WIDE_GUTTER_RATIO = 0.15;
+const OCR_MIN_NUMERIC_CONFIDENCE = 90;
 let tesseractAvailableCache;
 let installedLanguages;
 const UNSPACED_CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const NUMERIC_TOKEN = /^[-+−]?\p{Nd}+(?:[.,]\p{Nd}+)*[%‰]?$/u;
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 
 export function detectTesseract() {
@@ -56,7 +58,7 @@ export function missingTesseractLanguages(languages) {
     return languages.split('+').filter(language => !installedLanguages.has(language));
 }
 
-export function ocrTextLooksGood(text) {
+export function ocrTextLooksGood(text, allowNumbers = false) {
     const trimmed = (text ?? '').normalize('NFKC').trim();
     if (!trimmed) {
         return { ok: false, reason: 'OCR output was empty' };
@@ -65,8 +67,9 @@ export function ocrTextLooksGood(text) {
     const tokensOf = line => UNSPACED_CJK.test(line)
         ? [...wordSegmenter.segment(line)].filter(item => item.isWordLike || /[^\p{P}\s]/u.test(item.segment)).map(item => item.segment)
         : line.split(/\s+/).filter(Boolean);
-    const isWord = token => /^[\p{L}\p{M}'’\-]+$/u.test(token)
-        && (UNSPACED_CJK.test(token) || (token.match(/\p{L}/gu)?.length ?? 0) >= 3);
+    const isWord = token => (allowNumbers && NUMERIC_TOKEN.test(token))
+        || (/^[\p{L}\p{M}'’\-]+$/u.test(token)
+            && (UNSPACED_CJK.test(token) || (token.match(/\p{L}/gu)?.length ?? 0) >= 3));
     const tokens = tokensOf(trimmed);
     const words = tokens.length;
     const alnum = (trimmed.match(/[\p{L}\p{N}\p{M}]/gu) ?? []).length;
@@ -215,7 +218,9 @@ async function readOcr(inputPath, geometry, languages, mode, timeout) {
     });
     const { words, blocks, text } = parseTsv(stdout, geometry, mode);
     const cleaned = text.trim();
-    const quality = ocrTextLooksGood(cleaned);
+    const allowNumbers = words.every(word => !NUMERIC_TOKEN.test(word.text.normalize('NFKC'))
+        || word.confidence >= OCR_MIN_NUMERIC_CONFIDENCE);
+    const quality = ocrTextLooksGood(cleaned, allowNumbers);
     const confidence = ocrConfidenceStats(words);
     return { ok: quality.ok && confidence.ok, text: cleaned, blocks, words,
         reason: quality.ok ? confidence.reason : quality.reason, diagnostics: confidence.diagnostics, confidence };

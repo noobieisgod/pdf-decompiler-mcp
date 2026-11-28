@@ -104,6 +104,25 @@ test('full-page OCR reads scanned columns separately and cites their text', { sk
     }
 });
 
+test('OCR keeps confident numbers searchable on a scanned financial page', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/tables-bordered.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const raster = renderMupdfPageToCanvas(document, 1, { width: 850, height: 1100 });
+    const source = path.join(root, 'scanned-financial-page.pdf');
+    await fs.writeFile(source, buildRasterScan(raster));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+    const text = elements.filter(element => element.textSource === 'ocr').map(element => element.text).join(' ');
+    assert.match(text, /Quarter Revenue Cost/);
+    assert.match(text, /100 80/);
+    assert.match(text, /120 90/);
+    const [hit] = (await manager.search({ ...opened, query: '120', strategy: 'phrase' })).results;
+    assert.ok(hit.citation.bbox?.width > 0);
+});
+
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');
     const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], extractionTimeoutMs: 50_000 })).init();

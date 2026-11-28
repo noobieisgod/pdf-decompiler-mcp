@@ -47,7 +47,7 @@
             },
             "extractionRevision": {
               "type": "number",
-              "const": 12
+              "const": 13
             },
             "documentId": {
               "type": "string",
