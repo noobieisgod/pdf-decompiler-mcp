@@ -178,6 +178,27 @@ test('OCR retries small scanned pages at a higher resolution and keeps page coor
     assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
 });
 
+test('OCR retries a dense full-size scan at the default higher resolution', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('../evaluation/pdfs/Heavy Test One.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const page = document.loadPage(2);
+    const [x0, y0, x1, y1] = page.getBounds();
+    page.destroy();
+    const width = x1 - x0;
+    const height = y1 - y0;
+    const scale = 2400 / Math.max(width, height);
+    const raster = renderMupdfPageToCanvas(document, 3, { width: width * scale, height: height * scale });
+    const source = path.join(root, 'dense-scanned-report.pdf');
+    await fs.writeFile(source, buildRasterScan(raster, { width, height }));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const [hit] = (await manager.search({ ...opened, query: 'Corporate Governance', strategy: 'phrase' })).results;
+    const box = hit.citation.bbox;
+    assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
+});
+
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');
     const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], extractionTimeoutMs: 50_000 })).init();

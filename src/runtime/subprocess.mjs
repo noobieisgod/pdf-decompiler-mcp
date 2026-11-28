@@ -8,6 +8,7 @@ import { PdfDecompilerError } from '../core/errors.mjs';
 import { isParserErrorPayload, parserErrorPayload } from './parser-errors.mjs';
 
 const execFileAsync = promisify(execFile);
+const MAX_OCR_RETRY_DIMENSION = 1800;
 // V8's trap-handler guard reservations exceed the Linux worker address-space limit.
 const boundedWasmFlags = process.allowedNodeEnvironmentFlags.has('--disable-wasm-trap-handler')
     ? ['--disable-wasm-trap-handler'] : [];
@@ -73,6 +74,7 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
         inputBytes: pdfBytes.length,
         pages: options.pages,
         maxImageDim: Math.min(options.maxImageDim || 1200, 4096),
+        maxOcrRetryDim: Math.min(options.maxImageDim ?? MAX_OCR_RETRY_DIMENSION, MAX_OCR_RETRY_DIMENSION),
         maxPages: config.maxPages,
         ocrPolicy: config.ocrPolicy,
         ocrLanguages: config.ocrLanguages,

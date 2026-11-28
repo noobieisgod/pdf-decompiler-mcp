@@ -9,7 +9,7 @@ import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImage
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
 
-const MIN_OCR_RESOLUTION_RETRY_SCALE = 1.5;
+const MIN_OCR_RESOLUTION_RETRY_SCALE = 1.25;
 
 function buildRuntimeRenderNotice(kind) {
     return `(${kind} unavailable in the current runtime)`;
@@ -19,6 +19,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         allowImageRendering = true,
         allowOcr = true,
         allowVisualFallback = true,
+        maxOcrRetryDim = Math.min(maxImageDim ?? 1400, 1400),
         ocrPolicy = 'auto',
         ocrLanguages = 'eng',
     } = options;
@@ -99,14 +100,22 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     }
                     return runTesseractOcr(await canvas.encode('png'), pageNum, geometry, ocrLanguages, deadline);
                 };
-                let ocrResult = await recognize(scaleCanvas(cachedFullCanvas, maxOcrDim));
-                const retryScale = maxOcrDim / Math.max(viewport.width, viewport.height);
-                if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster'
-                    && retryScale >= MIN_OCR_RESOLUTION_RETRY_SCALE && Date.now() < deadline) {
-                    const retry = await renderFullPageCanvas(retryScale)
-                        .then(canvas => recognize(scaleCanvas(canvas, maxOcrDim)))
-                        .catch(() => null);
-                    if (retry?.ok) ocrResult = retry;
+                const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
+                let ocrResult = await recognize(initialRaster);
+                if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster') {
+                    let lastDimension = Math.max(initialRaster.width, initialRaster.height);
+                    for (const dimension of [maxOcrDim, maxOcrRetryDim]) {
+                        if (Date.now() >= deadline) break;
+                        if (dimension < lastDimension * MIN_OCR_RESOLUTION_RETRY_SCALE) continue;
+                        const retryScale = dimension / Math.max(viewport.width, viewport.height);
+                        const raster = retryScale > 1 ? renderFullPageCanvas(retryScale) : Promise.resolve(cachedFullCanvas);
+                        const retry = await raster.then(canvas => recognize(scaleCanvas(canvas, dimension))).catch(() => null);
+                        if (retry?.ok) {
+                            ocrResult = retry;
+                            break;
+                        }
+                        lastDimension = dimension;
+                    }
                 }
                 if (ocrResult.ok) {
                     extractionMode = 'ocr';

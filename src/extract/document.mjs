@@ -466,6 +466,7 @@ export async function extractPageContent(pdfBytes, requestedPages, maxImageDim, 
         const pageOptions = {
             allowImageRendering: true,
             allowOcr: budgetStillAvailable && options.ocrPolicy !== 'off',
+            maxOcrRetryDim: options.maxOcrRetryDim,
             allowVisualFallback: false,
             ocrPolicy: options.ocrPolicy || 'auto',
             ocrLanguages: options.ocrLanguages,

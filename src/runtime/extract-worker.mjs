@@ -41,6 +41,7 @@ async function main() {
     const { extractPageContent } = await import('../extract/document.mjs');
     const result = await extractPageContent(bytes, options.pages, options.maxImageDim, {
         maxPages: options.maxPages,
+        maxOcrRetryDim: options.maxOcrRetryDim,
         timeBudgetMs: options.timeBudgetMs,
         ocrPolicy: options.ocrPolicy,
         ocrLanguages: options.ocrLanguages,

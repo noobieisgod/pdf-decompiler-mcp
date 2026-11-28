@@ -32,6 +32,8 @@ Extraction revision 14 can render a rejected small raster page again at a higher
 
 Extraction revision 15 estimates slight skew on scanned pages from the alignment of dark pixels. It tries the straightened image within the OCR budget and maps accepted text boxes back to the original page.
 
+Extraction revision 16 extends the resolution retry to dense full-size scans. It tries the smaller retry first when applicable, then can render at up to 1,800 pixels within the same OCR time budget. A smaller caller-selected image limit still applies.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.
