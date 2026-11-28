@@ -1,6 +1,6 @@
 {
     "name": "pdf-decompiler-mcp",
-    "version": "3.1.1",
+    "version": "3.2.0",
     "private": true,
     "type": "module",
     "description": "Local-first MCP server for bounded, cited PDF decomposition and retrieval",
@@ -14,7 +14,13 @@
     "bugs": {
         "url": "https://github.com/noobieisgod/PDF-Decompiler-MCP/issues"
     },
-    "keywords": ["pdf", "mcp", "retrieval", "ocr", "local-first"],
+    "keywords": [
+        "pdf",
+        "mcp",
+        "retrieval",
+        "ocr",
+        "local-first"
+    ],
     "bin": {
         "pdf-decompiler-mcp": "./src/index.mjs"
     },

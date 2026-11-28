@@ -17,4 +17,4 @@ Exact installed dependency versions and transitive packages are recorded in `pac
 
 The MCPB development tool uses patched `tmp`, `node-forge`, and Zod versions through npm overrides. The tool itself is omitted from production npm and MCPB contents.
 
-Download the [Corresponding Source for the MuPDF 1.27.0 WASM](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/download/v3.1.1/mupdf-1.27.0-corresponding-source.tar.gz) from the [v3.1.1 release](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/tag/v3.1.1). The archive includes Artifex's license, WASM build instructions, and bundled build dependencies. The PDF Decompiler source is available under the same release tag.
+Download the [Corresponding Source for the MuPDF 1.27.0 WASM](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/download/v3.2.0/mupdf-1.27.0-corresponding-source.tar.gz) from the [v3.2.0 release](https://github.com/noobieisgod/pdf-decompiler-mcp/releases/tag/v3.2.0). The archive includes Artifex's license, WASM build instructions, and bundled build dependencies. The PDF Decompiler source is available under the same release tag.
