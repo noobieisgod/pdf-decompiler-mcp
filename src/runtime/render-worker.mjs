@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises';
 import { createCanvas, scaleCanvas } from '../pdf/canvas.mjs';
 import { openMupdfDocument, renderMupdfPageToCanvas } from '../backend/mupdf-runtime.mjs';
+import { readPdfFromStdin } from './worker-input.mjs';
 
-const [inputPath, outputPath, optionsJson] = process.argv.slice(2);
+const [outputPath, optionsJson] = process.argv.slice(2);
 
 try {
     const options = JSON.parse(optionsJson);
-    const bytes = await fs.readFile(inputPath);
+    const bytes = readPdfFromStdin(options.inputBytes);
     const document = openMupdfDocument(bytes);
     let canvas = renderMupdfPageToCanvas(document, options.page);
     if (options.bbox) {

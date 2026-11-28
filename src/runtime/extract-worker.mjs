@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises';
-import { readSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { detectTesseract } from '../extract/ocr.mjs';
 import { classifyParserFailure, parserErrorPayload } from './parser-errors.mjs';
+import { readPdfFromStdin } from './worker-input.mjs';
 
 const [outputPath, optionsJson] = process.argv.slice(2);
 let finalized = false;
@@ -31,13 +31,7 @@ process.once('unhandledRejection', error => { void fail(error); });
 async function main() {
     const options = JSON.parse(optionsJson);
     if (options.ocrPolicy === 'required' && !detectTesseract()) throw new Error('Tesseract is required by the OCR policy but is not available on PATH');
-    const bytes = Buffer.allocUnsafe(options.inputBytes);
-    let offset = 0;
-    while (offset < bytes.length) {
-        const bytesRead = readSync(0, bytes, offset, bytes.length - offset, null);
-        if (!bytesRead) throw new Error('The PDF input was truncated during transfer');
-        offset += bytesRead;
-    }
+    const bytes = readPdfFromStdin(options.inputBytes);
     const { extractPageContent } = await import('../extract/document.mjs');
     const result = await extractPageContent(bytes, options.pages, options.maxImageDim, {
         maxPages: options.maxPages,

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recover faint ruled tables and retry uncertain OCR within the table crop, including on skewed scans.
+- Reconstruct borderless numeric tables from scans and retain cell citations for signed and decimal values.
 - Restore native table headers and preserve the order of adjacent tables and trailing notes.
 - Add cited, on-demand crops for detected vector charts and fractions in fidelity reads.
 - Keep split OCR numbers in their financial table cells and warn about ambiguous spacing.
@@ -27,6 +29,7 @@
 - Recover tagged table cells in semantic row and column order, including cells nested in untagged marked content.
 - Keep PDF workers inside the Linux memory cap by reducing native allocator reservations and releasing unused page rasters.
 - Pass PDF bytes directly to the isolated extraction worker, avoiding a temporary copy of the source.
+- Pass PDF bytes directly to the render worker as well, keeping the complete source out of its temporary directory.
 - Start page rendering without loading PDF.js when MuPDF handles the image.
 
 ## 3.1.1

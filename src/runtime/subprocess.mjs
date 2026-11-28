@@ -59,10 +59,17 @@ async function linuxPrlimitAvailable() {
     return process.platform === 'linux' && fs.access('/usr/bin/prlimit').then(() => true, () => false);
 }
 
-function workerSpawnOptions(usePrlimit, stdin = 'ignore') {
+function workerSpawnOptions(usePrlimit) {
     // Keep glibc allocator arenas from using up the bounded virtual address space.
     const env = usePrlimit ? { MALLOC_ARENA_MAX: '1', ...process.env } : process.env;
-    return { env, stdio: [stdin, 'ignore', 'pipe'], windowsHide: true };
+    return { env, stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true };
+}
+
+function sendWorkerInput(child, pdfBytes) {
+    child.stdin.on('error', error => {
+        if (error.code !== 'EPIPE') child.kill();
+    });
+    child.stdin.end(pdfBytes);
 }
 
 export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
@@ -102,12 +109,9 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     let monitor;
     let monitoring = false;
     try {
-        child = spawn(command, args, workerSpawnOptions(usePrlimit, 'pipe'));
+        child = spawn(command, args, workerSpawnOptions(usePrlimit));
         child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-16_384); });
-        child.stdin.on('error', error => {
-            if (error.code !== 'EPIPE') child.kill();
-        });
-        child.stdin.end(pdfBytes);
+        sendWorkerInput(child, pdfBytes);
         timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, config.extractionTimeoutMs);
         monitor = setInterval(async () => {
             if (monitoring) return;
@@ -136,21 +140,21 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
 export async function runRenderSubprocess(pdfBytes, config, options) {
     const work = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf-decompiler-render-'));
     await fs.chmod(work, 0o700).catch(() => {});
-    const input = path.join(work, 'source.pdf');
     const output = path.join(work, 'render.json');
-    await fs.writeFile(input, pdfBytes, { mode: 0o600 });
     const worker = fileURLToPath(new URL('./render-worker.mjs', import.meta.url));
+    const workerOptions = JSON.stringify({ ...options, inputBytes: pdfBytes.length });
     const usePrlimit = await linuxPrlimitAvailable();
     const command = usePrlimit ? '/usr/bin/prlimit' : process.execPath;
     const args = usePrlimit
-        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, input, output, JSON.stringify(options)]
-        : [worker, input, output, JSON.stringify(options)];
+        ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, output, workerOptions]
+        : [worker, output, workerOptions];
     const child = spawn(command, args, workerSpawnOptions(usePrlimit));
     let stderr = '';
     let timedOut = false;
     let exceededMemory = false;
     let monitoring = false;
     child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-16_384); });
+    sendWorkerInput(child, pdfBytes);
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, Math.min(config.extractionTimeoutMs, 30_000));
     const monitor = setInterval(async () => {
         if (monitoring) return;
