@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Read native vertical Japanese columns from right to left and cite their visible page regions.
+
 - Search across two to eight open PDFs in one call, with ranked matches and exact document and page citations.
 
 - Recover tagged table cells in semantic row and column order, including cells nested in untagged marked content.

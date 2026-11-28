@@ -79,6 +79,17 @@ export function textItemBBox(item, viewport) {
     const width = Math.abs(Number(item.width) || 0) * (viewport.scale || 1);
     const height = Math.abs(Number(item.height) || Math.hypot(matrix[2], matrix[3]) || 0) * (viewport.scale || 1);
     if (!width || !height) return null;
+    if (item.dir === 'ttb') {
+        const advance = Math.hypot(matrix[2], matrix[3]) || 1;
+        const dx = -matrix[2] / advance;
+        const dy = -matrix[3] / advance;
+        const x = matrix[4] + dy * width / 2;
+        const y = matrix[5] - dx * width / 2;
+        return normalizeBBox(bboxFromPoints([
+            [x, y], [x + dx * height, y + dy * height],
+            [x - dy * width, y + dx * width], [x + dx * height - dy * width, y + dy * height + dx * width],
+        ]), viewport.width, viewport.height);
+    }
     const baselineLength = Math.hypot(matrix[0], matrix[1]) || 1;
     const ux = matrix[0] / baselineLength;
     const uy = matrix[1] / baselineLength;

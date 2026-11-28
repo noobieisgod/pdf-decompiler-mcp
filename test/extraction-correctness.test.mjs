@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { loadConfig } from '../src/config/runtime.mjs';
@@ -7,6 +8,7 @@ import { anchorLinkAnnotations } from '../src/extract/links.mjs';
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { LinkElementSchema, ParserErrorCodeSchema } from '../src/server/schemas.mjs';
 import { buildCjkPdf, buildSyntheticPdf } from './fixtures/generate-fixtures.mjs';
+import { temporaryConfig } from './helpers.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
 
@@ -15,6 +17,27 @@ test('bundled character maps decode Chinese and Japanese composite-font text off
     assert.match(result.pages[0].text, /先進製程與資訊安全/u);
     assert.match(result.pages[1].text, /半導体輸出規制/u);
     assert.ok(result.pages.every(page => page.textBlocks.some(block => block.bbox?.width > 0)));
+});
+
+test('vertical Japanese columns read top to bottom and right to left with cited geometry', async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'off' });
+    const source = path.join(root, 'vertical-japanese.pdf');
+    const bytes = buildCjkPdf({ vertical: true });
+    await fs.writeFile(source, bytes);
+    const raw = await extractPageContent(bytes, undefined, 1200, { ocrPolicy: 'off' });
+    assert.equal(raw.pages[0].text, '右から読む日本語\n縦書きの文章');
+
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const { documentId, extractionFingerprint } = await manager.open({ source });
+    const reference = { documentId, extractionFingerprint };
+    const result = await manager.getPages({ ...reference, mode: 'text' });
+    assert.deepEqual(result.elements.map(element => element.text), ['右から読む日本語', '縦書きの文章']);
+    const [right, left] = result.elements;
+    assert.ok(right.bbox.x > left.bbox.x && right.bbox.height > right.bbox.width);
+    assert.deepEqual(right.citation.bbox, right.bbox);
+    const search = await manager.search({ ...reference, query: '読む日本', strategy: 'phrase' });
+    assert.equal(search.results[0].citation.elementId, right.id);
 });
 
 test('reusing the header pass produces the same extraction as loading each page again', async () => {

@@ -20,7 +20,7 @@ Canonical format version 4 retains the format 3 geometry and semantic records wh
 
 Bounding boxes use PDF points after CropBox and page rotation, with a top-left origin, x increasing right, and y increasing down. Values are rounded to three decimals. A block box is the union of valid span boxes. Coordinates within 0.5 points of a page edge may be clamped; larger invalid boxes become null with `invalid_geometry`.
 
-Reading order uses normalized geometry, line relationships, gutters, spanning regions, and deterministic source-index and ID tie-breakers. Column, link-overlap, mixed-page, and table thresholds are named internal heuristics. Tests may justify tuning them without changing public schemas. Ambiguous layouts retain deterministic order and may emit `layout_ambiguous`.
+Reading order uses normalized geometry, line relationships, gutters, spanning regions, and deterministic source-index and ID tie-breakers. Extraction revision 9 groups PDF.js top-to-bottom spans into page-aligned columns and emits the rightmost column first. Column, link-overlap, mixed-page, and table thresholds are named internal heuristics. Ambiguous layouts retain deterministic order and may emit `layout_ambiguous`.
 
 Internal links use named, explicit, or unresolved destination records. Parser-provided visible text is preferred. Geometry-derived anchor text requires meaningful overlap, line-aware ordering, duplicate removal, and deterministic conflict resolution. Raw PDF.js arrays and dictionaries are never canonical data.
 

@@ -253,9 +253,20 @@ export function anchorLinkAnnotations(textItems, rawLinks) {
     return { linkMarkerMap, links, warnings };
 }
 
-export function buildPageTextWithLinks(textItems, imagePlacements, tables, imageIds, tableIds, linkMarkerMap) {
+export function buildPageTextWithLinks(textItems, imagePlacements, tables, imageIds, tableIds, linkMarkerMap, blocks = []) {
     const elements = [];
+    const vertical = blocks.filter(block => block.vertical);
+    const verticalItems = new Set(vertical.flatMap(block => block.spans));
+    if (vertical.length) {
+        const columns = vertical.map(block => {
+            const markers = block.spans.flatMap(item => linkMarkerMap?.get(item) ?? []);
+            return [block.text, ...markers].join(' ');
+        });
+        const yTop = vertical.reduce((top, block) => Math.min(top, block.yTop), Infinity);
+        elements.push({ yTop, x: vertical[0].x, str: columns.join('\n') });
+    }
     for (const item of textItems) {
+        if (verticalItems.has(item)) continue;
         elements.push({ yTop: item.yTop, x: item.x, str: item.str });
         const linkMarkers = linkMarkerMap?.get(item) ?? [];
         for (let idx = 0; idx < linkMarkers.length; idx += 1) {

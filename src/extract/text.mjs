@@ -179,7 +179,48 @@ function orderBlocks(blocks, viewport, regionX = 0, allowSectionBands = true, al
     return { blocks: attachMarginNumbers([...before, ...columnSort(left), ...columnSort(right), ...middle, ...after], regionX, width), warnings: middle.length ? [{ code: 'layout_ambiguous' }] : [] };
 }
 
+function verticalTextBlocks(items, viewport) {
+    const spans = items.flatMap((item, sourceIndex) => item.vertical ? [{ item, sourceIndex }] : []);
+    const center = ({ item }) => item.x + item.w / 2;
+    spans.sort((a, b) => center(b) - center(a) || a.item.yTop - b.item.yTop || a.sourceIndex - b.sourceIndex);
+    const columns = [];
+    for (const span of spans) {
+        const current = columns.at(-1);
+        if (current && Math.abs(center(current[0]) - center(span)) <= Math.min(current[0].item.w, span.item.w) / 2) current.push(span);
+        else columns.push([span]);
+    }
+    return columns.flatMap(column => {
+        const runs = [];
+        for (const span of column.sort((a, b) => a.item.yTop - b.item.yTop || a.sourceIndex - b.sourceIndex)) {
+            const run = runs.at(-1);
+            const previous = run?.at(-1).item;
+            if (previous && span.item.yTop - previous.yTop - previous.h <= span.item.w * 1.5) run.push(span);
+            else runs.push([span]);
+        }
+        return runs.map(run => {
+            const columnItems = run.map(span => span.item);
+            const bbox = unionBBoxes(columnItems.map(item => item.bbox), viewport?.width, viewport?.height);
+            return {
+                text: columnItems.map(item => item.str).join('').trim(),
+                bbox, x: bbox.x, yTop: bbox.y, yBottom: bbox.y + bbox.height,
+                spans: columnItems, sourceIndex: run[0].sourceIndex, role: 'text', roleConfidence: 1, vertical: true,
+            };
+        });
+    }).filter(block => block.text);
+}
+
 export function buildTextBlocks(items, viewport = null) {
+    if (!items.some(item => item.vertical)) return buildHorizontalTextBlocks(items, viewport);
+    const vertical = verticalTextBlocks(items, viewport);
+    if (!vertical.length) return buildHorizontalTextBlocks(items, viewport);
+    const horizontal = buildHorizontalTextBlocks(items.filter(item => !item.vertical), viewport);
+    const firstVerticalY = vertical.reduce((top, block) => Math.min(top, block.yTop), Infinity);
+    const insertion = horizontal.blocks.findIndex(block => block.yBottom > firstVerticalY);
+    horizontal.blocks.splice(insertion === -1 ? horizontal.blocks.length : insertion, 0, ...vertical);
+    return horizontal;
+}
+
+function buildHorizontalTextBlocks(items, viewport) {
     const lines = buildTextLines(items);
     if (lines.length === 0) {
         return { blocks: [], warnings: [] };

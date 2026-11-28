@@ -193,6 +193,10 @@ export function extractStructTables(structTree, mcidMap) {
 }
 
 export function detectTables(items, viewport = null, allowSpreadPartition = true) {
+    if (items.some(item => item.vertical)) {
+        const { tables, nonTableItems } = detectTables(items.filter(item => !item.vertical), viewport, allowSpreadPartition);
+        return { tables, nonTableItems: [...nonTableItems, ...items.filter(item => item.vertical)] };
+    }
     if (items.length === 0) {
         return { tables: [], nonTableItems: [] };
     }

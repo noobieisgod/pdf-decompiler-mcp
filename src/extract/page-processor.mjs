@@ -360,7 +360,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                 },
             });
         }
-        pageText = buildPageTextWithLinks(nonTableItems, activePlacements, normalizedTables, imageIds, tableIds, linkMarkerMap);
+        pageText = buildPageTextWithLinks(nonTableItems, activePlacements, normalizedTables, imageIds, tableIds, linkMarkerMap, nativeLayout.blocks);
     } else {
         const { links, warnings: linkWarnings } = anchorLinkAnnotations(bodyItems, annotationResult.links);
         rawLinks = links;

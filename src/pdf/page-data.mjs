@@ -96,6 +96,7 @@ export function buildMcidMapAndRawItems(textContentItems, viewport) {
         const yTop = bbox?.y ?? 0;
         const width = bbox?.width ?? 0;
         const height = bbox?.height ?? 0;
+        const vertical = item.dir === 'ttb' && bbox && runsDownPage(item, viewport);
         const entry = {
             str: item.str,
             x,
@@ -103,6 +104,7 @@ export function buildMcidMapAndRawItems(textContentItems, viewport) {
             w: width,
             h: height || 12,
             bbox,
+            ...(vertical ? { vertical: true } : {}),
             mcid: markedContent.at(-1) ?? item.markedContentId ?? null,
         };
         rawItems.push(entry);
@@ -124,6 +126,11 @@ export function buildMcidMapAndRawItems(textContentItems, viewport) {
         }
     }
     return { mcidMap, rawItems };
+}
+
+function runsDownPage(item, viewport) {
+    const [, , dx, dy] = multiplyTransform(viewport.transform, item.transform);
+    return -dy > Math.abs(dx);
 }
 
 export async function loadPageData(pdfjsDoc, pageNum) {
@@ -191,4 +198,4 @@ export async function normalizeDestination(pdfjsDoc, rawDestination) {
     }
     return explicitDestination(pdfjsDoc, rawDestination, 'explicit', null);
 }
-import { normalizeBBox, pdfRectToBBox, textItemBBox } from '../model/geometry.mjs';
+import { multiplyTransform, normalizeBBox, pdfRectToBBox, textItemBBox } from '../model/geometry.mjs';
