@@ -78,7 +78,16 @@ export async function getDocOutline(pdfjsDoc) {
 export function buildMcidMapAndRawItems(textContentItems, viewport) {
     const mcidMap = new Map();
     const rawItems = [];
+    const markedContent = [];
     for (const item of textContentItems) {
+        if (item?.type === 'beginMarkedContent' || item?.type === 'beginMarkedContentProps') {
+            markedContent.push(item.tag === 'Artifact' ? null : item.id ?? markedContent.at(-1) ?? null);
+            continue;
+        }
+        if (item?.type === 'endMarkedContent') {
+            markedContent.pop();
+            continue;
+        }
         if (!item?.str) {
             continue;
         }
@@ -94,7 +103,7 @@ export function buildMcidMapAndRawItems(textContentItems, viewport) {
             w: width,
             h: height || 12,
             bbox,
-            mcid: item.markedContentId ?? null,
+            mcid: markedContent.at(-1) ?? item.markedContentId ?? null,
         };
         rawItems.push(entry);
         if (entry.mcid != null) {

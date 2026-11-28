@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
@@ -7,6 +8,7 @@ import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { buildCanonicalModel } from '../src/model/canonical.mjs';
 import { ocrConfidenceStats } from '../src/extract/ocr.mjs';
 import { rawDocument, temporaryConfig } from './helpers.mjs';
+import { buildTaggedTablePdf } from './fixtures/generate-fixtures.mjs';
 
 const fixtureRoot = path.resolve('test/fixtures/generated');
 
@@ -29,6 +31,24 @@ test('textual and spread tables are recovered without weakening negative control
 
     const negative = await fixtureModel(t, 'table-negative-controls.pdf');
     assert.equal(negative.state.model.elements.some(element => element.type === 'table'), false);
+});
+
+test('tagged PDF cells retain their semantic row and column order', async t => {
+    const { root, config } = await temporaryConfig(t);
+    const source = path.join(root, 'tagged-table.pdf');
+    await fs.writeFile(source, buildTaggedTablePdf());
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source, ocrPolicy: 'off' });
+    const { elements } = await manager.getPages({ ...opened, pages: [1] });
+    const table = elements.find(element => element.type === 'table');
+    assert.ok(table);
+    assert.deepEqual(table.rows, [['Item', 'Quantity'], ['Manual', '12'], ['Toolkit', '34']]);
+    assert.ok(table.cells.every(cell => cell.bbox?.width > 0));
+    const prose = elements.filter(element => element.type === 'block').map(element => element.text).join(' ');
+    assert.match(prose, /Outside the table/);
+    assert.match(prose, /Watermark/);
+    assert.doesNotMatch(prose, /Manual|Toolkit/);
 });
 
 test('section dividers bound column order and numeric page labels remain text', async t => {

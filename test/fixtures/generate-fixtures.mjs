@@ -96,6 +96,29 @@ export function buildCjkPdf() {
     return serializePdf(objects);
 }
 
+export function buildTaggedTablePdf() {
+    const values = ['Item', 'Quantity', 'Manual', '12', 'Toolkit', '34'];
+    const text = (value, x, y) => `BT /F1 12 Tf ${x} ${y} Td (${pdfEscape(value)}) Tj ET`;
+    const content = values.map((value, index) => {
+        const label = text(value, 72 + (index % 2) * 234, 720 - index * 30);
+        const nested = index === 2 ? `/Span BMC ${label} EMC /Artifact BMC ${text('Watermark', 420, 655)} EMC` : label;
+        return `/${index < 2 ? 'TH' : 'TD'} <</MCID ${index}>> BDC ${nested} EMC`;
+    });
+    const references = values.map((_, index) => `${12 + index} 0 R`).join(' ');
+    return serializePdf([
+        '<< /Type /Catalog /Pages 2 0 R /MarkInfo << /Marked true >> /StructTreeRoot 6 0 R >>',
+        '<< /Type /Pages /Kids [4 0 R] /Count 1 >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /StructParents 0 /Contents 5 0 R >>',
+        streamObject([...content, text('Outside the table', 72, 510)].join('\n')),
+        '<< /Type /StructTreeRoot /K [8 0 R] /ParentTree 7 0 R >>',
+        `<< /Nums [0 [${references}]] >>`,
+        '<< /Type /StructElem /S /Table /P 6 0 R /Pg 4 0 R /K [9 0 R 10 0 R 11 0 R] >>',
+        ...[0, 1, 2].map(row => `<< /Type /StructElem /S /TR /P 8 0 R /Pg 4 0 R /K [${12 + row * 2} 0 R ${13 + row * 2} 0 R] >>`),
+        ...values.map((_, index) => `<< /Type /StructElem /S /${index < 2 ? 'TH' : 'TD'} /P ${9 + Math.floor(index / 2)} 0 R /Pg 4 0 R /K ${index} >>`),
+    ]);
+}
+
 function tablePage({ bordered = true, merged = false } = {}) {
     const xs = [72, 240, 390];
     const ys = [680, 640, 600];

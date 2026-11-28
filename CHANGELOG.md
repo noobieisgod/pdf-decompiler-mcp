@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Recover tagged table cells in semantic row and column order, including cells nested in untagged marked content.
+- Keep PDF workers inside the Linux memory cap by reducing native allocator reservations and releasing unused page rasters.
+
 ## 3.1.1
 
 - Fix PDF extraction when npm hoists dependencies or optional native canvas packages are omitted.

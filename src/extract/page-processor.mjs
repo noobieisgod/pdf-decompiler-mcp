@@ -190,7 +190,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
     }
 
     if (extractionMode === 'native') {
-        const structTree = await pdfjsPage.getStructTree();
+        const structTree = mcidMap.size ? await pdfjsPage.getStructTree().catch(() => null) : null;
         const structTables = extractStructTables(structTree, mcidMap);
         let tables;
         let nonTableItems;
