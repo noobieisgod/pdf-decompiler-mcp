@@ -58,6 +58,12 @@ async function linuxPrlimitAvailable() {
     return process.platform === 'linux' && fs.access('/usr/bin/prlimit').then(() => true, () => false);
 }
 
+function workerSpawnOptions(usePrlimit) {
+    // Keep glibc allocator arenas from using up the bounded virtual address space.
+    const env = usePrlimit ? { MALLOC_ARENA_MAX: '2', ...process.env } : process.env;
+    return { env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true };
+}
+
 export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     const work = await fs.mkdtemp(path.join(os.tmpdir(), 'pdf-decompiler-extract-'));
     await fs.chmod(work, 0o700).catch(() => {});
@@ -94,7 +100,7 @@ export async function runExtractionSubprocess(pdfBytes, config, options = {}) {
     let monitor;
     let monitoring = false;
     try {
-        child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+        child = spawn(command, args, workerSpawnOptions(usePrlimit));
         child.stderr.on('data', chunk => { stderr = `${stderr}${chunk}`.slice(-16_384); });
         timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, config.extractionTimeoutMs);
         monitor = setInterval(async () => {
@@ -133,7 +139,7 @@ export async function runRenderSubprocess(pdfBytes, config, options) {
     const args = usePrlimit
         ? [`--as=${config.subprocessMemoryBytes}`, '--', process.execPath, ...boundedWasmFlags, worker, input, output, JSON.stringify(options)]
         : [worker, input, output, JSON.stringify(options)];
-    const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
+    const child = spawn(command, args, workerSpawnOptions(usePrlimit));
     let stderr = '';
     let timedOut = false;
     let exceededMemory = false;
