@@ -7,7 +7,7 @@ import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
-import { buildGermanScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
+import { buildGermanScan, buildRasterScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
 import { temporaryConfig } from './helpers.mjs';
 
 test('OCR language selection is validated and part of the extraction generation', () => {
@@ -80,6 +80,28 @@ test('OCR recovers sideways and upside-down scans with citations in original coo
     }
     const search = await manager.search({ ...opened, query: 'DETERMINISTIC EVIDENCE', strategy: 'phrase', granularity: 'page' });
     assert.deepEqual(new Set(search.results.map(hit => hit.page)), new Set([1, 2, 3]));
+});
+
+test('full-page OCR reads scanned columns separately and cites their text', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/multi-column.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    for (const height of [792, 1300]) {
+        const raster = renderMupdfPageToCanvas(document, 1, { width: height * 612 / 792, height });
+        const source = path.join(root, `scanned-columns-${height}.pdf`);
+        await fs.writeFile(source, buildRasterScan(raster));
+        const opened = await manager.open({ source });
+        const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+        const blocks = elements.filter(element => element.textSource === 'ocr');
+        const text = blocks.map(block => block.text).join('\n');
+        assert.match(text, /LAYOUT HEADING[\s\S]+Left column alpha[\s\S]+Left column theta[\s\S]+Right column one[\s\S]+Right column eight[\s\S]+Spanning footer/);
+        const [left] = (await manager.search({ ...opened, query: 'Left column theta', strategy: 'phrase' })).results;
+        const [right] = (await manager.search({ ...opened, query: 'Right column one', strategy: 'phrase' })).results;
+        assert.ok(left.citation.bbox.x + left.citation.bbox.width < raster.width / 2);
+        assert.ok(right.citation.bbox.x > raster.width / 2);
+    }
 });
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {

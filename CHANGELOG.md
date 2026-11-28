@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Read scanned columns separately and cite each column's text in its own region.
 - Recover text from sideways and upside-down scans while citing the original page coordinates.
 
 - Select local Tesseract language packs for scanned PDFs and validate OCR text across scripts.

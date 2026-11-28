@@ -5,6 +5,7 @@ import { execFile, spawnSync } from 'child_process';
 import { promisify } from 'node:util';
 
 import {
+    MIN_COLUMN_GUTTER_LINE_COUNT,
     OCR_MAX_REPEATED_RATIO,
     OCR_MAX_CORRUPTED_LINE_RATIO,
     OCR_MAX_LOW_CONFIDENCE_RATIO,
@@ -18,10 +19,12 @@ import {
     OCR_MIN_WORDS,
 } from '../config/constants.mjs';
 import { unionBBoxes } from '../model/geometry.mjs';
+import { buildTextBlocks } from './text.mjs';
 
 const runCommand = promisify(execFile);
 const OCR_TIMEOUT_MS = 30_000;
 const OSD_TIMEOUT_MS = 3_000;
+const OCR_WIDE_GUTTER_RATIO = 0.15;
 let tesseractAvailableCache;
 let installedLanguages;
 const UNSPACED_CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
@@ -136,7 +139,7 @@ export function ocrConfidenceStats(words) {
     };
 }
 
-function parseTsv(value, geometry) {
+function parseTsv(value, geometry, mode) {
     const rows = value.replace(/\r\n/g, '\n').split('\n').slice(1).map(line => line.split('\t')).filter(columns => columns.length >= 12 && columns[0] === '5' && columns[11]?.trim());
     const xScale = geometry?.pageWidth && geometry?.pixelWidth ? geometry.pageWidth / geometry.pixelWidth : 1;
     const yScale = geometry?.pageHeight && geometry?.pixelHeight ? geometry.pageHeight / geometry.pixelHeight : 1;
@@ -163,30 +166,54 @@ function parseTsv(value, geometry) {
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key).push(word);
     }
+    const ocrSource = geometry?.ocrSource || { scope: 'page', figureId: null, regionId: geometry?.regionId || null, bbox: null };
+    const gutter = mode === '3' && geometry?.pageWidth ? geometry.pageWidth * OCR_WIDE_GUTTER_RATIO : Infinity;
+    let linesCrossingGutter = 0;
     const blocks = [...grouped.values()].map(group => {
         const lines = new Map();
         for (const word of group) {
             if (!lines.has(word.line)) lines.set(word.line, []);
             lines.get(word.line).push(word);
         }
+        const text = [...lines.values()].map(line => {
+            line.sort((a, b) => a.bbox.x - b.bbox.x || a.sourceIndex - b.sourceIndex);
+            if (line.some((word, index) => index >= 2 && index < line.length - 1
+                && word.bbox.x - line[index - 1].bbox.x - line[index - 1].bbox.width >= gutter)) {
+                linesCrossingGutter += 1;
+            }
+            return line.map(word => word.text).join(' ');
+        }).join('\n');
         return {
-            text: [...lines.values()].map(line => line.sort((a, b) => a.bbox.x - b.bbox.x || a.sourceIndex - b.sourceIndex).map(word => word.text).join(' ')).join('\n'),
+            text,
             role: 'ocr',
             bbox: unionBBoxes(group.map(word => word.bbox), geometry?.pageWidth, geometry?.pageHeight),
             spans: group,
             sourceIndex: Math.min(...group.map(word => word.sourceIndex)),
             textSource: 'ocr',
-            ocrSource: geometry?.ocrSource || { scope: 'page', figureId: null, regionId: geometry?.regionId || null, bbox: null },
+            ocrSource,
         };
-    }).sort((a, b) => a.bbox?.y - b.bbox?.y || a.bbox?.x - b.bbox?.x || a.sourceIndex - b.sourceIndex);
+    });
+    if (linesCrossingGutter > 0 && linesCrossingGutter >= MIN_COLUMN_GUTTER_LINE_COUNT) {
+        const items = words.map(word => {
+            const { bbox, text } = word;
+            return { word, str: text, bbox, x: bbox.x, yTop: bbox.y, w: bbox.width, h: bbox.height };
+        });
+        const layout = buildTextBlocks(items, { width: geometry.pageWidth, height: geometry.pageHeight });
+        if (!layout.warnings.length && layout.blocks.reduce((count, block) => count + block.spans.length, 0) === words.length) {
+            const ordered = layout.blocks.map(({ text, bbox, sourceIndex, spans }) => ({
+                text, bbox, sourceIndex, role: 'ocr', spans: spans.map(span => span.word), textSource: 'ocr', ocrSource,
+            }));
+            return { words, blocks: ordered, text: ordered.map(block => block.text).join('\n\n') };
+        }
+    }
     return { words, blocks, text: blocks.map(block => block.text).join('\n\n') };
 }
 
-async function readOcr(inputPath, geometry, languages, timeout) {
-    const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', '6', '-c', 'tessedit_create_tsv=1'], {
+async function readOcr(inputPath, geometry, languages, mode, timeout) {
+    const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', mode, '-c', 'tessedit_create_tsv=1'], {
         windowsHide: true, timeout, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8',
     });
-    const { words, blocks, text } = parseTsv(stdout, geometry);
+    const { words, blocks, text } = parseTsv(stdout, geometry, mode);
     const cleaned = text.trim();
     const quality = ocrTextLooksGood(cleaned);
     const confidence = ocrConfidenceStats(words);
@@ -194,7 +221,7 @@ async function readOcr(inputPath, geometry, languages, timeout) {
         reason: quality.ok ? confidence.reason : quality.reason, diagnostics: confidence.diagnostics, confidence };
 }
 
-async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, deadline) {
+async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, deadline) {
     const timeLeft = deadline - Date.now();
     if (timeLeft <= OSD_TIMEOUT_MS) return null;
     const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', 'osd', '--psm', '0', '-c', 'min_characters_to_try=20'], {
@@ -212,10 +239,11 @@ async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, deadlin
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate(rotation * Math.PI / 180);
     ctx.drawImage(image, -image.width / 2, -image.height / 2);
-    await fs.promises.writeFile(inputPath, await canvas.encode('png'));
+    const rotatedPath = path.join(path.dirname(inputPath), 'rotated.png');
+    await fs.promises.writeFile(rotatedPath, await canvas.encode('png'));
     const remaining = deadline - Date.now();
     if (remaining <= 0) return null;
-    const result = await readOcr(inputPath, { regionId: geometry?.regionId, ocrSource: geometry?.ocrSource }, languages, remaining);
+    const result = await readOcr(rotatedPath, { regionId: geometry?.regionId, ocrSource: geometry?.ocrSource }, languages, mode, remaining);
     if (!result.ok) return null;
 
     // Map boxes back to the original image only after ordering words in upright space.
@@ -241,11 +269,19 @@ export async function runTesseractOcr(pngBytes, pageNum, geometry = null, langua
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
         fs.writeFileSync(inputPath, pngBytes);
+        const fullPage = geometry?.ocrSource?.scope !== 'image';
+        const mode = fullPage ? '3' : '6';
         const deadline = Date.now() + OCR_TIMEOUT_MS;
-        const result = await readOcr(inputPath, geometry, languages, OCR_TIMEOUT_MS);
+        const result = await readOcr(inputPath, geometry, languages, mode, OCR_TIMEOUT_MS);
         if (result.ok) return result;
-        const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, deadline).catch(() => null);
-        return rotated ?? result;
+        const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, deadline).catch(() => null);
+        if (rotated) return rotated;
+        const remaining = deadline - Date.now();
+        if (fullPage && remaining > 0) {
+            const uniform = await readOcr(inputPath, geometry, languages, '6', remaining).catch(() => null);
+            if (uniform?.ok) return uniform;
+        }
+        return result;
     } catch {
         return { ok: false, text: '', reason: 'OCR process failed' };
     } finally {

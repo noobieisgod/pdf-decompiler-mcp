@@ -209,7 +209,12 @@ function readableRasterText(lines, rotation = 0) {
         context.translate(-600, -800);
     }
     lines.forEach((line, index) => context.fillText(line, 80, 220 + index * 150));
-    const rgba = context.getImageData(0, 0, width, height).data;
+    return canvasRgb(canvas);
+}
+
+function canvasRgb(canvas) {
+    const { width, height } = canvas;
+    const rgba = canvas.getContext('2d').getImageData(0, 0, width, height).data;
     const data = Buffer.alloc(width * height * 3);
     for (let source = 0, target = 0; source < rgba.length; source += 4, target += 3) {
         data[target] = rgba[source];
@@ -217,6 +222,11 @@ function readableRasterText(lines, rotation = 0) {
         data[target + 2] = rgba[source + 2];
     }
     return { width, height, data };
+}
+
+export function buildRasterScan(canvas) {
+    const image = canvasRgb(canvas);
+    return buildFixturePdf([{ width: image.width, height: image.height, images: [image] }]);
 }
 
 export function buildGermanScan() {
