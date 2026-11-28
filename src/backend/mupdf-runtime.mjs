@@ -34,21 +34,29 @@ export function openMupdfDocument(pdfBytes) {
 
 export function renderMupdfPageToCanvas(mupdfDoc, pageNum, viewport = null) {
     const page = mupdfDoc.loadPage(pageNum - 1);
-    const [x0, y0, x1, y1] = page.getBounds();
-    const baseWidth = Math.max(1, x1 - x0);
-    const baseHeight = Math.max(1, y1 - y0);
-    const viewportWidth = viewport?.width ?? baseWidth;
-    const viewportHeight = viewport?.height ?? baseHeight;
-    const scaleX = viewportWidth / baseWidth;
-    const scaleY = viewportHeight / baseHeight;
-    const scale = Number.isFinite(scaleX) && Number.isFinite(scaleY)
-        ? Math.max(0.01, (scaleX + scaleY) / 2)
-        : 1;
-    const pixmap = page.toPixmap(
-        mupdf.Matrix.scale(scale, scale),
-        mupdf.ColorSpace.DeviceRGB,
-        false,
-        true,
-    );
-    return rgbPixmapToCanvas(pixmap);
+    try {
+        const [x0, y0, x1, y1] = page.getBounds();
+        const baseWidth = Math.max(1, x1 - x0);
+        const baseHeight = Math.max(1, y1 - y0);
+        const viewportWidth = viewport?.width ?? baseWidth;
+        const viewportHeight = viewport?.height ?? baseHeight;
+        const scaleX = viewportWidth / baseWidth;
+        const scaleY = viewportHeight / baseHeight;
+        const scale = Number.isFinite(scaleX) && Number.isFinite(scaleY)
+            ? Math.max(0.01, (scaleX + scaleY) / 2)
+            : 1;
+        const pixmap = page.toPixmap(
+            mupdf.Matrix.scale(scale, scale),
+            mupdf.ColorSpace.DeviceRGB,
+            false,
+            true,
+        );
+        try {
+            return rgbPixmapToCanvas(pixmap);
+        } finally {
+            pixmap.destroy();
+        }
+    } finally {
+        page.destroy();
+    }
 }

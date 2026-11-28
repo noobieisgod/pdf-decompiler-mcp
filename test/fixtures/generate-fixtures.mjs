@@ -224,9 +224,9 @@ function canvasRgb(canvas) {
     return { width, height, data };
 }
 
-export function buildRasterScan(canvas) {
+export function buildRasterScan(canvas, { width = canvas.width, height = canvas.height } = {}) {
     const image = canvasRgb(canvas);
-    return buildFixturePdf([{ width: image.width, height: image.height, images: [image] }]);
+    return buildFixturePdf([{ width, height, images: [{ ...image, drawWidth: width, drawHeight: height }] }]);
 }
 
 export function buildGermanScan() {

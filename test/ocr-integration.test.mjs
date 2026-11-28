@@ -123,6 +123,24 @@ test('OCR keeps confident numbers searchable on a scanned financial page', { ski
     assert.ok(hit.citation.bbox?.width > 0);
 });
 
+test('OCR retries small scanned pages at a higher resolution and keeps page coordinates', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+    const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
+    const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/tables-bordered.pdf', import.meta.url)));
+    t.after(() => document.destroy());
+    const raster = renderMupdfPageToCanvas(document, 1, { width: 1836, height: 2376 });
+    const source = path.join(root, 'small-scanned-financial-page.pdf');
+    const height = 600;
+    const width = height * 612 / 792;
+    await fs.writeFile(source, buildRasterScan(raster, { width, height }));
+    const manager = await new DocumentManager(config).init();
+    t.after(() => manager.close());
+    const opened = await manager.open({ source });
+    const [hit] = (await manager.search({ ...opened, query: '120', strategy: 'phrase' })).results;
+    assert.match(hit.snippet, /120 90/);
+    const box = hit.citation.bbox;
+    assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
+});
+
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const root = path.resolve('test/fixtures/generated');
     const manager = await new DocumentManager(loadConfig({ cacheMode: 'none', allowRoots: [root], extractionTimeoutMs: 50_000 })).init();

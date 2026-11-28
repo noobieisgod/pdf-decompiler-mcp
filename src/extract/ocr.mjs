@@ -22,7 +22,7 @@ import { unionBBoxes } from '../model/geometry.mjs';
 import { buildTextBlocks } from './text.mjs';
 
 const runCommand = promisify(execFile);
-const OCR_TIMEOUT_MS = 30_000;
+export const OCR_TIMEOUT_MS = 30_000;
 const OSD_TIMEOUT_MS = 3_000;
 const OCR_WIDE_GUTTER_RATIO = 0.15;
 const OCR_MIN_NUMERIC_CONFIDENCE = 90;
@@ -269,15 +269,16 @@ async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, d
     return result;
 }
 
-export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng') {
+export async function runTesseractOcr(pngBytes, pageNum, geometry = null, languages = 'eng', deadline = Date.now() + OCR_TIMEOUT_MS) {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-decompiler-ocr-'));
     const inputPath = path.join(tempDir, `page-${pageNum}.png`);
     try {
         fs.writeFileSync(inputPath, pngBytes);
         const fullPage = geometry?.ocrSource?.scope !== 'image';
         const mode = fullPage ? '3' : '6';
-        const deadline = Date.now() + OCR_TIMEOUT_MS;
-        const result = await readOcr(inputPath, geometry, languages, mode, OCR_TIMEOUT_MS);
+        const timeLeft = deadline - Date.now();
+        if (timeLeft <= 0) return { ok: false, text: '', reason: 'OCR process timed out' };
+        const result = await readOcr(inputPath, geometry, languages, mode, timeLeft);
         if (result.ok) return result;
         const rotated = await retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, deadline).catch(() => null);
         if (rotated) return rotated;

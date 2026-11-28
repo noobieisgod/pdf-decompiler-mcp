@@ -28,6 +28,8 @@ Visual classification reuses one bounded operator-list pass. Raster coverage is 
 
 Block roles are `heading`, `text`, `list`, or `code`. OCR origin is represented independently from role and always uses `extractionMethod: "ocr"`. Image-region OCR points to the canonical figure that produced it and is ordered directly after that figure. Page OCR reports region counts and accepted, partial, rejected, or not-attempted status. Invalid OCR source references and rejected OCR are removed instead of becoming dangling or searchable public records. Extraction revision 11 lets Tesseract's optional orientation model suggest a retry after rejected OCR. Accepted words retain their upright reading order and are mapped back to the original displayed-page coordinates. Revision 12 uses Tesseract's automatic layout for scans, checks repeated wide gaps with the native layout engine, and can retry with uniform-block recognition. Revision 13 counts numeric tokens toward OCR text quality when the numeric words meet a higher confidence threshold.
 
+Extraction revision 14 can render a rejected small raster page again at a higher resolution. Both attempts share the OCR time limit, and accepted citations use the original page coordinates.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

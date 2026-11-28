@@ -3,10 +3,12 @@ import { hfSignature } from './headers-footers.mjs';
 import { classifyRenderFailure, cropPlacementFromCanvas, encodePageImage, isKnownRenderEnvironmentError, renderPageImages, renderPageCanvas, getImagePlacements } from './images.mjs';
 import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
-import { detectTesseract, runTesseractOcr } from './ocr.mjs';
+import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
+
+const MIN_OCR_RESOLUTION_RETRY_SCALE = 1.5;
 
 function buildRuntimeRenderNotice(kind) {
     return `(${kind} unavailable in the current runtime)`;
@@ -26,7 +28,9 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
         })
         : rawItems;
     const strippedByBoilerplate = rawItems.length ? (rawItems.length - bodyItems.length) / rawItems.length : 0;
-    const renderFullPageCanvas = async () => renderPageCanvasOverride ? renderPageCanvasOverride() : renderPageCanvas(pdfjsPage, viewport);
+    const renderFullPageCanvas = async (scale = 1) => renderPageCanvasOverride
+        ? renderPageCanvasOverride(scale)
+        : renderPageCanvas(pdfjsPage, scale === 1 ? viewport : viewport.clone({ scale: viewport.scale * scale }));
 
     const [visualInspection, annotationResult] = await Promise.all([
         getImagePlacements(pdfjsPage, viewport),
@@ -79,14 +83,23 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
             ocrRegions.attempted += 1;
             try {
                 cachedFullCanvas = await renderFullPageCanvas();
-                const ocrCanvas = scaleCanvas(cachedFullCanvas, Math.min(maxImageDim ?? 1400, 1400));
-                const ocrPng = await ocrCanvas.encode('png');
-                const ocrResult = await runTesseractOcr(Buffer.from(ocrPng), pageNum, {
-                    pixelWidth: ocrCanvas.width,
-                    pixelHeight: ocrCanvas.height,
+                const maxOcrDim = Math.min(maxImageDim ?? 1400, 1400);
+                const deadline = Date.now() + OCR_TIMEOUT_MS;
+                const recognize = async canvas => runTesseractOcr(Buffer.from(await canvas.encode('png')), pageNum, {
+                    pixelWidth: canvas.width,
+                    pixelHeight: canvas.height,
                     pageWidth: viewport.width,
                     pageHeight: viewport.height,
-                }, ocrLanguages);
+                }, ocrLanguages, deadline);
+                let ocrResult = await recognize(scaleCanvas(cachedFullCanvas, maxOcrDim));
+                const retryScale = maxOcrDim / Math.max(viewport.width, viewport.height);
+                if (!ocrResult.ok && ocrResult.confidence && pageProfile.visualType === 'raster'
+                    && retryScale >= MIN_OCR_RESOLUTION_RETRY_SCALE && Date.now() < deadline) {
+                    const retry = await renderFullPageCanvas(retryScale)
+                        .then(canvas => recognize(scaleCanvas(canvas, maxOcrDim)))
+                        .catch(() => null);
+                    if (retry?.ok) ocrResult = retry;
+                }
                 if (ocrResult.ok) {
                     extractionMode = 'ocr';
                     routingMode = 'page_ocr';

@@ -29,7 +29,11 @@ export async function openHybridDocumentBackend(pdfBytes) {
             let rasterPromise = null;
             return {
                 ...pageData,
-                renderPageCanvas: async () => {
+                renderPageCanvas: async (scale = 1) => {
+                    if (scale !== 1) {
+                        const { width, height } = pageData.viewport;
+                        return renderMupdfPageToCanvas(mupdfDoc, pageNum, { width: width * scale, height: height * scale });
+                    }
                     if (!rasterPromise) {
                         rasterPromise = Promise.resolve(renderMupdfPageToCanvas(mupdfDoc, pageNum, pageData.viewport));
                     }

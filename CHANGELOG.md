@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Retry OCR at a higher resolution on small scanned pages.
 - Keep high-confidence numbers searchable on numeric-heavy scans.
 - Read scanned columns separately and cite each column's text in its own region.
 - Recover text from sideways and upside-down scans while citing the original page coordinates.
