@@ -50,6 +50,8 @@ Extraction revision 23 detects faint rules in scanned numeric tables. When the f
 
 Extraction revision 24 can reread one malformed number in an isolated ruled cell. It accepts the replacement when both readings of the crop agree and every previously readable digit and punctuation mark stays intact. The table keeps its uncertainty warning.
 
+Extraction revision 25 allows a small label indent and a slightly wider final header in scanned borderless tables. The number columns still have to agree with the established right edges.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

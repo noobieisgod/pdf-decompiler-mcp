@@ -227,20 +227,25 @@ function financialHeader(line, row) {
     const edges = [labelEnd.x + labelEnd.width, ...row.right];
     const cells = edges.map(() => []);
     for (const word of line) {
-        const { x, width } = word.bbox;
+        const { x, width, height } = word.bbox;
         const center = x + width / 2;
-        const column = edges.findIndex(right => center <= right + FINANCIAL_COLUMN_TOLERANCE);
+        const column = edges.findIndex((right, index) => center <= right + FINANCIAL_COLUMN_TOLERANCE
+            || (index === edges.length - 1 && x < right && center <= right + height));
         if (column < 0) return null;
         cells[column].push(word);
     }
     return cells.every(cell => cell.length) ? cells : null;
 }
 
+function matchesLabelStart(word, anchor) {
+    return Math.abs(word.bbox.x - anchor.labelX) <= Math.max(FINANCIAL_COLUMN_TOLERANCE, anchor.words[0].bbox.height);
+}
+
 function alignFinancialLine(words, anchor) {
     const cutoff = anchor.cells[1][0].bbox.x - 20;
     const label = words.filter(word => word.bbox.x + word.bbox.width < cutoff);
     if (!label.length || !label.some(word => /\p{L}/u.test(word.text))) return null;
-    if (Math.abs(label[0].bbox.x - anchor.labelX) > FINANCIAL_COLUMN_TOLERANCE) return null;
+    if (!matchesLabelStart(label[0], anchor)) return null;
     const values = anchor.right.map(() => []);
     const boundaries = anchor.right.slice(0, -1).map((right, index) => (right + anchor.right[index + 1]) / 2);
     for (const word of words.slice(label.length)) {
@@ -270,7 +275,7 @@ function readFinancialTables(lines) {
         for (; end < parsed.length; end++) {
             const current = parsed[end];
             const exactColumns = current && current.right.length === row.right.length
-                && Math.abs(current.labelX - row.labelX) <= FINANCIAL_COLUMN_TOLERANCE
+                && matchesLabelStart(current.words[0], row)
                 && current.right.every((right, index) => Math.abs(right - row.right[index]) <= FINANCIAL_COLUMN_TOLERANCE);
             const next = exactColumns ? current : alignFinancialLine(lines[end], row);
             if (!next || next.y - aligned.at(-1).y > maxGap || next.y - aligned.at(-1).y < 3) break;

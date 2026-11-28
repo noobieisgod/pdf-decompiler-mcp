@@ -333,7 +333,8 @@ test('well-aligned numeric OCR can pass the prose gate with a complete header', 
         ['Airport', '340.3', '317.0', '+5.5%'], ['Harbor', '503.9', '614.5', '-12.0%']];
     const words = rows.flatMap((row, line) => row.flatMap((cell, column) => cell.split(' ').map((text, part) => ({
         text, block: 1, paragraph: 1, line, confidence: 96,
-        bbox: { x: 30 + column * 112 + (line && column ? 44 - text.length * 5 : part * 34),
+        bbox: { x: 30 + column * 112 + (line && column ? 44 - text.length * 5 : part * 34)
+                + (line === 2 && column === 0 ? 8 : 0) + (line === 0 && column === 3 ? 8 : 0),
             y: 20 + line * 33, width: text.length * 5, height: 10 },
     })))).map((word, sourceIndex) => ({ ...word, sourceIndex }));
     const geometry = { pageWidth: canvas.width, pageHeight: canvas.height };
