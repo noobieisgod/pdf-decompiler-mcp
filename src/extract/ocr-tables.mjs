@@ -207,6 +207,41 @@ function makeCell(words) {
     return { text: words.map(word => word.text).join(' '), bbox: unionBBoxes(words.map(word => word.bbox)) };
 }
 
+export async function retryBorderlessSigns(ocr, geometry, { renderCrop, pageNum, dpi, languages, deadline }) {
+    const weak = ocr.words.filter(word => word.bbox && word.confidence < OCR_LOW_CONFIDENCE_THRESHOLD
+        && /^\p{Nd}/u.test(word.text) && NUMERIC_CELL.test(word.text));
+    if (!weak.length || Date.now() >= deadline) return;
+    for (const table of ocr.tables ?? []) {
+        if (!table.headerRows || !table.lowConfidence) continue;
+        const cells = table.cells.slice(table.headerRows).flat().filter(cell => cell.bbox && weak.some(word => word.text === cell.text
+            && Math.abs(word.bbox.x - cell.bbox.x) < 0.01 && Math.abs(word.bbox.y - cell.bbox.y) < 0.01
+            && Math.abs(word.bbox.width - cell.bbox.width) < 0.01 && Math.abs(word.bbox.height - cell.bbox.height) < 0.01));
+        if (!cells.length) continue;
+        const box = table.bbox;
+        const x = Math.max(0, box.x - 8);
+        const y = Math.max(0, box.y - 8);
+        const width = Math.min(geometry.pageWidth, box.x + box.width + 8) - x;
+        const height = Math.min(geometry.pageHeight, box.y + box.height + 8) - y;
+        const raster = await renderCrop({ x, y, width, height });
+        const retry = await runTesseractOcr(await raster.encode('png'), pageNum, {
+            pageWidth: width, pageHeight: height, pixelWidth: raster.width, pixelHeight: raster.height, dpi,
+        }, languages, deadline);
+        if (!retry.ok || retry.correctedRotation) return;
+        for (const cell of cells) {
+            const matches = retry.words.filter(word => /^[+−-]/u.test(word.text) && word.text.slice(1) === cell.text
+                && word.confidence >= 90
+                && Math.abs(word.bbox.x + x + word.bbox.width - cell.bbox.x - cell.bbox.width) <= FINANCIAL_COLUMN_TOLERANCE
+                && Math.abs(word.bbox.y + y + word.bbox.height / 2 - cell.bbox.y - cell.bbox.height / 2) <= 4);
+            if (matches.length !== 1) continue;
+            const [word] = matches;
+            cell.text = word.text;
+            cell.bbox = unionBBoxes([cell.bbox, { ...word.bbox, x: word.bbox.x + x, y: word.bbox.y + y }]);
+        }
+        table.rows = table.cells.map(row => row.map(cell => cell.text));
+        return;
+    }
+}
+
 function parseFinancialLine(words) {
     const boundary = words.findLastIndex(word => !NUMERIC_CELL.test(word.text));
     if (boundary < 0 || words.length - boundary - 1 < 3) return null;

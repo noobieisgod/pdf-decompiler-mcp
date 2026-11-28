@@ -52,6 +52,8 @@ Extraction revision 24 can reread one malformed number in an isolated ruled cell
 
 Extraction revision 25 allows a small label indent and a slightly wider final header in scanned borderless tables. The number columns still have to agree with the established right edges.
 
+Extraction revision 26 retries one borderless table crop when a numeric cell has low confidence. A replacement can add a sign when its digits, punctuation, and position agree with the first reading. The cell box covers the sign and the table retains its uncertainty warning.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

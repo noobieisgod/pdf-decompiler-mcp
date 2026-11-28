@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Recover omitted signs in low-confidence borderless table cells from a higher-resolution crop.
 - Recover borderless table rows when their labels drift slightly and the numeric columns stay aligned.
 - Confirm an unread digit with a single-line OCR pass while retaining the scanned table's uncertainty warning.
 ## 3.2.0

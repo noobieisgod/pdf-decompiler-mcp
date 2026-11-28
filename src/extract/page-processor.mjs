@@ -5,7 +5,7 @@ import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
 import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
 import { runDeskewedOcr } from './ocr-deskew.mjs';
-import { extractScannedTables, retryRuledGrid } from './ocr-tables.mjs';
+import { extractScannedTables, retryBorderlessSigns, retryRuledGrid } from './ocr-tables.mjs';
 import { recognizeScannedSpread } from './ocr-spread.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
@@ -93,6 +93,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                 const maxOcrDim = Math.min(maxImageDim ?? 1400, 1400);
                 const deadline = Date.now() + OCR_TIMEOUT_MS;
                 const retryScale = maxOcrRetryDim / Math.max(viewport.width, viewport.height);
+                let cropAttempted = false;
                 const recognize = async (canvas, highestResolution) => {
                     const geometry = {
                         pixelWidth: canvas.width,
@@ -101,8 +102,11 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         pageHeight: viewport.height,
                     };
                     const dpi = Math.round(72 * Math.max(canvas.width, canvas.height) / Math.max(viewport.width, viewport.height));
-                    const gridRetry = renderPageCanvasOverride && retryScale * 72 >= dpi * MIN_OCR_RESOLUTION_RETRY_SCALE
-                        ? { renderCrop: clip => renderPageCanvasOverride(retryScale, clip), pageNum, languages: ocrLanguages,
+                    const gridRetry = !cropAttempted && renderPageCanvasOverride && retryScale * 72 >= dpi * MIN_OCR_RESOLUTION_RETRY_SCALE
+                        ? { renderCrop: clip => {
+                            cropAttempted = true;
+                            return renderPageCanvasOverride(retryScale, clip);
+                        }, pageNum, languages: ocrLanguages,
                             dpi: Math.round(retryScale * 72), deadline, scale: retryScale, maxDimension: maxOcrRetryDim }
                         : null;
                     if (pageProfile.visualType === 'raster') {
@@ -116,7 +120,16 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     }, ocrLanguages, deadline, highestResolution ? readTables : null);
                     if (!readTables || !result.ok || result.correctedRotation || result.tables) return result;
                     const refined = gridRetry ? await retryRuledGrid(canvas, geometry, result, gridRetry).catch(() => null) : null;
-                    return extractScannedTables(canvas, geometry, result, refined);
+                    const extracted = extractScannedTables(canvas, geometry, result, refined);
+                    if (gridRetry && !cropAttempted && extracted.tables?.length) {
+                        const scale = Math.min(retryScale, Math.max(dpi / 72 * MIN_OCR_RESOLUTION_RETRY_SCALE,
+                            maxOcrDim / Math.max(viewport.width, viewport.height)));
+                        await retryBorderlessSigns(extracted, geometry, { ...gridRetry, dpi: Math.round(scale * 72), renderCrop: clip => {
+                            cropAttempted = true;
+                            return renderPageCanvasOverride(scale, clip);
+                        } }).catch(() => null);
+                    }
+                    return extracted;
                 };
                 const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
                 const spread = pageProfile.visualType === 'raster' && renderPageCanvasOverride
