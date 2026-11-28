@@ -60,7 +60,7 @@ async function linuxPrlimitAvailable() {
 
 function workerSpawnOptions(usePrlimit) {
     // Keep glibc allocator arenas from using up the bounded virtual address space.
-    const env = usePrlimit ? { MALLOC_ARENA_MAX: '2', ...process.env } : process.env;
+    const env = usePrlimit ? { MALLOC_ARENA_MAX: '1', ...process.env } : process.env;
     return { env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true };
 }
 

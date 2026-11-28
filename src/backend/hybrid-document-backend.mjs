@@ -7,8 +7,6 @@ export async function openHybridDocumentBackend(pdfBytes) {
         openPdfjsDocumentBackend(pdfBytes),
         Promise.resolve(openMupdfDocument(pdfBytes)),
     ]);
-    const pageRasterCache = new Map();
-
     return {
         name: 'hybrid',
         capabilities: {
@@ -34,7 +32,6 @@ export async function openHybridDocumentBackend(pdfBytes) {
                 renderPageCanvas: async () => {
                     if (!rasterPromise) {
                         rasterPromise = Promise.resolve(renderMupdfPageToCanvas(mupdfDoc, pageNum, pageData.viewport));
-                        pageRasterCache.set(pageNum, rasterPromise);
                     }
                     return rasterPromise;
                 },
@@ -42,7 +39,6 @@ export async function openHybridDocumentBackend(pdfBytes) {
             };
         },
         async destroy() {
-            pageRasterCache.clear();
             await pdfjsBackend.destroy();
             mupdfDoc.destroy?.();
         },
