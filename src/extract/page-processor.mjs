@@ -5,7 +5,7 @@ import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
 import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
 import { runDeskewedOcr } from './ocr-deskew.mjs';
-import { extractScannedTables } from './ocr-tables.mjs';
+import { extractScannedTables, retryRuledGrid } from './ocr-tables.mjs';
 import { recognizeScannedSpread } from './ocr-spread.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
@@ -92,6 +92,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                 cachedFullCanvas = await renderFullPageCanvas();
                 const maxOcrDim = Math.min(maxImageDim ?? 1400, 1400);
                 const deadline = Date.now() + OCR_TIMEOUT_MS;
+                const retryScale = maxOcrRetryDim / Math.max(viewport.width, viewport.height);
                 const recognize = async (canvas, highestResolution) => {
                     const geometry = {
                         pixelWidth: canvas.width,
@@ -99,17 +100,23 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         pageWidth: viewport.width,
                         pageHeight: viewport.height,
                     };
+                    const dpi = Math.round(72 * Math.max(canvas.width, canvas.height) / Math.max(viewport.width, viewport.height));
+                    const gridRetry = renderPageCanvasOverride && retryScale * 72 >= dpi * MIN_OCR_RESOLUTION_RETRY_SCALE
+                        ? { renderCrop: clip => renderPageCanvasOverride(retryScale, clip), pageNum, languages: ocrLanguages,
+                            dpi: Math.round(retryScale * 72), deadline, scale: retryScale, maxDimension: maxOcrRetryDim }
+                        : null;
                     if (pageProfile.visualType === 'raster') {
-                        const corrected = await runDeskewedOcr(canvas, pageNum, geometry, ocrLanguages, deadline).catch(() => null);
+                        const corrected = await runDeskewedOcr(canvas, pageNum, geometry, ocrLanguages, deadline, gridRetry).catch(() => null);
                         if (corrected) return corrected;
                     }
-                    const dpi = Math.round(72 * Math.max(canvas.width, canvas.height) / Math.max(viewport.width, viewport.height));
                     const readTables = pageProfile.visualType === 'raster'
                         ? result => extractScannedTables(canvas, geometry, result) : null;
                     const result = await runTesseractOcr(await canvas.encode('png'), pageNum, {
                         ...geometry, dpi: pageProfile.visualType === 'raster' && dpi > 72 && dpi <= 600 ? dpi : undefined,
                     }, ocrLanguages, deadline, highestResolution ? readTables : null);
-                    return readTables && result.ok && !result.correctedRotation && !result.tables ? readTables(result) : result;
+                    if (!readTables || !result.ok || result.correctedRotation || result.tables) return result;
+                    const refined = gridRetry ? await retryRuledGrid(canvas, geometry, result, gridRetry).catch(() => null) : null;
+                    return extractScannedTables(canvas, geometry, result, refined);
                 };
                 const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
                 const spread = pageProfile.visualType === 'raster' && renderPageCanvasOverride

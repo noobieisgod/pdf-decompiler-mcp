@@ -1,6 +1,7 @@
 import { multiplyTransform, transformUnitRect } from '../model/geometry.mjs';
 import { createCanvas, fillCanvasWhite } from '../pdf/canvas.mjs';
 import { runTesseractOcr } from './ocr.mjs';
+import { extractScannedTables, retryRuledGrid } from './ocr-tables.mjs';
 
 const MAX_SKEW_DEGREES = 8;
 const MIN_ALIGNMENT_GAIN = 1.4;
@@ -46,7 +47,7 @@ function scanSkew(canvas) {
         ? angle * RADIANS_PER_DEGREE : 0;
 }
 
-export async function runDeskewedOcr(source, pageNum, geometry, languages, deadline) {
+export async function runDeskewedOcr(source, pageNum, geometry, languages, deadline, gridRetry = null) {
     const angle = scanSkew(source);
     if (!angle) return null;
 
@@ -64,9 +65,8 @@ export async function runDeskewedOcr(source, pageNum, geometry, languages, deadl
     ctx.drawImage(source, -source.width / 2, -source.height / 2);
     const now = Date.now();
     const candidateDeadline = now + Math.floor((deadline - now) / 2);
-    const result = await runTesseractOcr(await canvas.encode('png'), pageNum, {
-        pixelWidth: canvas.width, pixelHeight: canvas.height, pageWidth: canvas.width, pageHeight: canvas.height,
-    }, languages, candidateDeadline);
+    const upright = { pixelWidth: canvas.width, pixelHeight: canvas.height, pageWidth: canvas.width, pageHeight: canvas.height };
+    const result = await runTesseractOcr(await canvas.encode('png'), pageNum, upright, languages, candidateDeadline);
     if (!result.ok) return null;
 
     const sx = geometry.pageWidth / source.width;
@@ -74,16 +74,40 @@ export async function runDeskewedOcr(source, pageNum, geometry, languages, deadl
     const inverse = [cos / scale, sin / scale, -sin / scale, cos / scale, 0, 0];
     inverse[4] = source.width / 2 - (inverse[0] * canvas.width + inverse[2] * canvas.height) / 2;
     inverse[5] = source.height / 2 - (inverse[1] * canvas.width + inverse[3] * canvas.height) / 2;
-    for (const item of [...result.words, ...result.blocks]) {
-        if (!item.bbox) continue;
-        const { x, y, width, height } = item.bbox;
+    const originalBounds = ({ x, y, width, height }) => {
         const box = transformUnitRect(multiplyTransform(inverse, [width, 0, 0, height, x, y]));
         const left = Math.max(0, box.x);
         const top = Math.max(0, box.y);
         const right = Math.min(source.width, box.x + box.width);
         const bottom = Math.min(source.height, box.y + box.height);
-        item.bbox = right > left && bottom > top
+        return right > left && bottom > top
             ? { x: left * sx, y: top * sy, width: (right - left) * sx, height: (bottom - top) * sy } : null;
+    };
+    let extracted = result;
+    if (!result.correctedRotation) {
+        const refined = gridRetry ? await retryRuledGrid(canvas, upright, result, {
+            ...gridRetry,
+            renderCrop: async clip => {
+                const sourceClip = originalBounds(clip);
+                if (!sourceClip) return null;
+                const crop = await gridRetry.renderCrop(sourceClip);
+                const zoom = Math.min(gridRetry.scale * Math.min(sx, sy) / scale, gridRetry.maxDimension / Math.max(clip.width, clip.height));
+                const rectified = createCanvas(Math.ceil(clip.width * zoom), Math.ceil(clip.height * zoom));
+                const target = fillCanvasWhite(rectified);
+                target.scale(zoom, zoom);
+                target.translate(canvas.width / 2 - clip.x, canvas.height / 2 - clip.y);
+                target.scale(scale, scale);
+                target.rotate(-angle);
+                target.drawImage(crop, sourceClip.x / sx - source.width / 2, sourceClip.y / sy - source.height / 2,
+                    sourceClip.width / sx, sourceClip.height / sy);
+                return rectified;
+            },
+        }).catch(() => null) : null;
+        extracted = extractScannedTables(canvas, upright, result, refined);
     }
-    return result;
+    const tables = extracted.tables ?? [];
+    for (const item of [...extracted.words, ...extracted.blocks, ...tables, ...tables.flatMap(table => table.cells.flat())]) {
+        if (item.bbox) item.bbox = originalBounds(item.bbox);
+    }
+    return extracted;
 }

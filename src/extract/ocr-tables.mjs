@@ -1,6 +1,6 @@
 import { unionBBoxes } from '../model/geometry.mjs';
 import { OCR_MIN_MEAN_CONFIDENCE } from '../config/constants.mjs';
-import { ocrTextLooksGood } from './ocr.mjs';
+import { ocrTextLooksGood, runTesseractOcr } from './ocr.mjs';
 
 const MAX_RULES = 64;
 const MIN_RULE_LENGTH = 0.075;
@@ -45,12 +45,12 @@ function hasIntersection(horizontal, vertical) {
         && vertical.axis >= horizontal.start - ENDPOINT_TOLERANCE && vertical.axis <= horizontal.end + ENDPOINT_TOLERANCE;
 }
 
-function findGrids(canvas) {
+function findGrids(canvas, darkThreshold = 384) {
     const { width, height } = canvas;
     const pixels = canvas.getContext('2d').getImageData(0, 0, width, height).data;
     const dark = (x, y) => {
         const offset = (y * width + x) * 4;
-        return pixels[offset] + pixels[offset + 1] + pixels[offset + 2] < 384;
+        return pixels[offset] + pixels[offset + 1] + pixels[offset + 2] < darkThreshold;
     };
     const horizontal = scanRules(height, width, (y, x) => dark(x, y));
     if (horizontal.length < 3) return [];
@@ -72,7 +72,7 @@ function findGrids(canvas) {
         || a.rows[0] - b.rows[0] || a.columns[0] - b.columns[0]);
 }
 
-function readGrid({ rows, columns }, words, scaleX, scaleY) {
+function readGrid({ rows, columns }, words, scaleX, scaleY, allowSparse = false) {
     const left = columns[0];
     const top = rows[0];
     const right = columns.at(-1);
@@ -96,7 +96,7 @@ function readGrid({ rows, columns }, words, scaleX, scaleY) {
     const populatedRows = cellWords.filter(row => row.some(cell => cell.length));
     const populatedColumns = columns.slice(1).filter((_, index) => cellWords.some(row => row[index].length));
     const occupied = cellWords.flat().filter(cell => cell.length).length;
-    if (populatedRows.length < 2 || populatedColumns.length < 2 || occupied * 2 < cellWords.length * cellWords[0].length) return null;
+    if (!allowSparse && (populatedRows.length < 2 || populatedColumns.length < 2 || occupied * 2 < cellWords.length * cellWords[0].length)) return null;
     const cells = cellWords.map((row, rowIndex) => row.map((cell, columnIndex) => ({
         text: cell.sort((a, b) => a.sourceIndex - b.sourceIndex).map(word => word.text).join(' '),
         bbox: {
@@ -106,8 +106,64 @@ function readGrid({ rows, columns }, words, scaleX, scaleY) {
             height: (rows[rowIndex + 1] - rows[rowIndex]) / scaleY,
         },
     })));
-    return { used, table: { bbox: { x: left / scaleX, y: top / scaleY, width: (right - left) / scaleX, height: (bottom - top) / scaleY },
+    return { used, cellWords, table: { bbox: { x: left / scaleX, y: top / scaleY, width: (right - left) / scaleX, height: (bottom - top) / scaleY },
         rows: cells.map(row => row.map(cell => cell.text)), cells, lowConfidence: hasUncertainNumber(used) } };
+}
+
+function hasUncertainGridNumber(words) {
+    return hasUncertainNumber(words) || words.some(word => word.confidence < 90
+        && /^[+−(\p{Nd}-][^\p{L}]*\p{Nd}/u.test(word.text) && !NUMERIC_CELL.test(word.text));
+}
+
+function hasNumericGrid(rows) {
+    return rows.filter(row => row.filter(value => /\p{Nd}/u.test(value) && NUMERIC_CELL.test(value)).length >= 2).length >= 3;
+}
+
+export async function retryRuledGrid(canvas, geometry, ocr, { renderCrop, pageNum, dpi, languages, deadline }) {
+    if (Date.now() >= deadline) return null;
+    const scaleX = canvas.width / geometry.pageWidth;
+    const scaleY = canvas.height / geometry.pageHeight;
+    const wideGrid = grid => grid.rows.length >= 5 && grid.columns.length >= 4;
+    const candidates = findGrids(canvas, 630).filter(wideGrid);
+    for (const grid of candidates.length ? candidates : findGrids(canvas, 675).filter(wideGrid)) {
+        const original = readGrid(grid, ocr.words, scaleX, scaleY, true);
+        if (!original) continue;
+        const usableOriginal = hasNumericGrid(original.table.rows);
+        const uncertainOriginal = hasUncertainGridNumber(original.used);
+        if (usableOriginal && !uncertainOriginal && original.table.rows.every(row => row.every(Boolean))) return { grid, ...original };
+        const fallback = usableOriginal ? { grid, ...original, table: { ...original.table, lowConfidence: true } } : null;
+        const bounds = original.table.bbox;
+        const x = Math.max(0, bounds.x - 8 / scaleX);
+        const y = Math.max(0, bounds.y - 8 / scaleY);
+        const clip = { x, y, width: Math.min(geometry.pageWidth, bounds.x + bounds.width + 8 / scaleX) - x,
+            height: Math.min(geometry.pageHeight, bounds.y + bounds.height + 8 / scaleY) - y };
+        const crop = await renderCrop(clip);
+        if (!crop) return fallback;
+        const result = await runTesseractOcr(await crop.encode('png'), pageNum, {
+            pixelWidth: crop.width, pixelHeight: crop.height, pageWidth: clip.width, pageHeight: clip.height, dpi,
+        }, languages, deadline);
+        if (result.correctedRotation || (!result.ok && (!result.confidence?.ok || !ocrTextLooksGood(result.text, true).ok))) return fallback;
+        for (const word of result.words) {
+            word.bbox.x += clip.x;
+            word.bbox.y += clip.y;
+        }
+        const positioned = readGrid(grid, result.words, scaleX, scaleY);
+        if (!positioned || !hasNumericGrid(positioned.table.rows)) return fallback;
+        let lowConfidence = false;
+        const cells = original.table.cells.map((row, rowIndex) => row.map((cell, columnIndex) => {
+            const prior = original.cellWords[rowIndex][columnIndex];
+            const words = positioned.cellWords[rowIndex][columnIndex];
+            const replacement = positioned.table.cells[rowIndex][columnIndex];
+            if ((!cell.text && replacement.text && words.every(word => word.confidence >= OCR_MIN_MEAN_CONFIDENCE))
+                || (hasUncertainGridNumber(prior) && !hasUncertainNumber(words) && NUMERIC_CELL.test(replacement.text))) {
+                return replacement;
+            }
+            lowConfidence ||= hasUncertainGridNumber(prior);
+            return cell;
+        }));
+        return { grid, used: original.used, table: { ...original.table, cells, rows: cells.map(row => row.map(cell => cell.text)), lowConfidence } };
+    }
+    return null;
 }
 
 function makeCell(words) {
@@ -213,11 +269,11 @@ function groupByRowCenter(words) {
     return rows;
 }
 
-export function extractScannedTables(canvas, geometry, ocr) {
+export function extractScannedTables(canvas, geometry, ocr, refined = null) {
     if (!ocr.ok && (!ocr.confidence?.ok || !ocrTextLooksGood(ocr.text, true).ok)) return ocr;
-    const used = new Set();
-    const tables = [];
-    const accepted = [];
+    const used = new Set(refined?.used);
+    const tables = refined ? [refined.table] : [];
+    const accepted = refined ? [refined.grid] : [];
     for (const grid of ocr.ok ? findGrids(canvas) : []) {
         if (accepted.some(other => grid.columns[0] < other.columns.at(-1) && grid.columns.at(-1) > other.columns[0]
             && grid.rows[0] < other.rows.at(-1) && grid.rows.at(-1) > other.rows[0])) continue;

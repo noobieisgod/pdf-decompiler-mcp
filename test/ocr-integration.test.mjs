@@ -6,7 +6,7 @@ import { openMupdfDocument, renderMupdfPageToCanvas } from '../src/backend/mupdf
 import { DocumentManager } from '../src/runtime/document-manager.mjs';
 import { loadConfig } from '../src/config/runtime.mjs';
 import { missingTesseractLanguages, ocrTextLooksGood } from '../src/extract/ocr.mjs';
-import { extractScannedTables } from '../src/extract/ocr-tables.mjs';
+import { extractScannedTables, retryRuledGrid } from '../src/extract/ocr-tables.mjs';
 import { extractionFingerprint } from '../src/model/canonical.mjs';
 import { createCanvas, fillCanvasWhite } from '../src/pdf/canvas.mjs';
 import { buildGermanScan, buildRasterScan, buildRotatedScan } from './fixtures/generate-fixtures.mjs';
@@ -337,6 +337,29 @@ test('well-aligned numeric OCR can pass the prose gate with a complete header', 
     assert.equal(extractScannedTables(canvas, geometry, noHeader), noHeader);
     const lowConfidence = { ...input, confidence: { ok: false } };
     assert.equal(extractScannedTables(canvas, geometry, lowConfidence), lowConfidence);
+});
+
+test('faint rules restore a numeric table without retrying reliable cell text', async () => {
+    const canvas = createCanvas(420, 250);
+    const context = fillCanvasWhite(canvas);
+    const rows = [['Plant', 'Flow', 'Target'], ['East', '140.5', '148.0'], ['West', '183.0', '171.5'], ['North', '155.5', '158.0']];
+    context.strokeStyle = '#c0c0c0';
+    context.beginPath();
+    for (let x = 20.5; x <= 350.5; x += 110) {
+        context.moveTo(x, 30.5);
+        context.lineTo(x, 190.5);
+    }
+    for (let y = 30.5; y <= 190.5; y += 40) {
+        context.moveTo(20.5, y);
+        context.lineTo(350.5, y);
+    }
+    context.stroke();
+    const words = rows.flatMap((row, line) => row.map((text, column) => ({ text, confidence: 96,
+        sourceIndex: line * row.length + column, bbox: { x: 40 + column * 110, y: 40 + line * 40, width: 32, height: 12 } })));
+    const geometry = { pageWidth: canvas.width, pageHeight: canvas.height };
+    const refined = await retryRuledGrid(canvas, geometry, { words }, { renderCrop: () => assert.fail('OCR text is already reliable') });
+    assert.deepEqual(refined.table.rows, rows);
+    assert.deepEqual(refined.table.cells[2][2].bbox, { x: 240, y: 110, width: 110, height: 40 });
 });
 
 test('automatic OCR recovers cited raster text alongside native text on sparse mixed pages', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
