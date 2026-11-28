@@ -34,6 +34,8 @@ Extraction revision 15 estimates slight skew on scanned pages from the alignment
 
 Extraction revision 16 extends the resolution retry to dense full-size scans. It tries the smaller retry first when applicable, then can render at up to 1,800 pixels within the same OCR time budget. A smaller caller-selected image limit still applies.
 
+Extraction revision 17 supplies Tesseract with the physical raster DPI at higher resolutions. It uses intersecting rules to recover rectangular table cells from unskewed page scans. OCR words must overlap their assigned cells, and accepted cells retain their original page coordinates.
+
 ## Canonical identity contract
 
 Identifiers are identical when the PDF bytes, schema version, extractor version, relevant configuration fingerprint, dependency fingerprint, and deterministic dependency behavior are identical. Ordinal element IDs are not promised to survive extractor, schema, dependency, or relevant configuration changes. Content and location fingerprints supplement ordinals for comparison without enlarging the public ID.

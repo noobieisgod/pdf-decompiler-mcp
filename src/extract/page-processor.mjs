@@ -5,6 +5,7 @@ import { scaleCanvas } from '../pdf/canvas.mjs';
 import { anchorLinkAnnotations, buildPageTextWithLinks, getPageAnnotations } from './links.mjs';
 import { detectTesseract, OCR_TIMEOUT_MS, runTesseractOcr } from './ocr.mjs';
 import { runDeskewedOcr } from './ocr-deskew.mjs';
+import { extractScannedTables } from './ocr-tables.mjs';
 import { buildPageProfile, classifyRegionKind, decidePageRouting, getTargetImageDim, shouldTryOcr } from './router.mjs';
 import { detectTables, extractStructTables, normalizeTableRows } from './tables.mjs';
 import { buildTextBlocks, findCaptionForImage, normalizeLooseText } from './text.mjs';
@@ -98,7 +99,11 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                         const corrected = await runDeskewedOcr(canvas, pageNum, geometry, ocrLanguages, deadline).catch(() => null);
                         if (corrected) return corrected;
                     }
-                    return runTesseractOcr(await canvas.encode('png'), pageNum, geometry, ocrLanguages, deadline);
+                    const dpi = Math.round(72 * Math.max(canvas.width, canvas.height) / Math.max(viewport.width, viewport.height));
+                    const result = await runTesseractOcr(await canvas.encode('png'), pageNum, {
+                        ...geometry, dpi: pageProfile.visualType === 'raster' && dpi > 72 && dpi <= 600 ? dpi : undefined,
+                    }, ocrLanguages, deadline);
+                    return result.ok && pageProfile.visualType === 'raster' ? extractScannedTables(canvas, geometry, result) : result;
                 };
                 const initialRaster = scaleCanvas(cachedFullCanvas, maxOcrDim);
                 let ocrResult = await recognize(initialRaster);
@@ -126,6 +131,7 @@ export async function processOnePage({ pageNum, pdfjsPage, viewport, pageHeight,
                     ocrDiagnostics.push(...(ocrResult.diagnostics || []));
                     pageText = ocrResult.text;
                     rawTextBlocks = ocrResult.blocks || [];
+                    rawTables = ocrResult.tables || [];
                 } else {
                     ocrRegions.rejected += 1;
                     ocrDiagnostics.push(...(ocrResult.diagnostics || []));

@@ -213,7 +213,9 @@ function parseTsv(value, geometry, mode) {
 }
 
 async function readOcr(inputPath, geometry, languages, mode, timeout) {
-    const { stdout } = await runCommand('tesseract', [inputPath, 'stdout', '-l', languages, '--psm', mode, '-c', 'tessedit_create_tsv=1'], {
+    const args = [inputPath, 'stdout', '-l', languages, '--psm', mode, '-c', 'tessedit_create_tsv=1'];
+    if (geometry?.dpi) args.push('--dpi', String(geometry.dpi));
+    const { stdout } = await runCommand('tesseract', args, {
         windowsHide: true, timeout, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8',
     });
     const { words, blocks, text } = parseTsv(stdout, geometry, mode);
@@ -248,7 +250,7 @@ async function retryRotatedOcr(inputPath, pngBytes, geometry, languages, mode, d
     await fs.promises.writeFile(rotatedPath, await canvas.encode('png'));
     const remaining = deadline - Date.now();
     if (remaining <= 0) return null;
-    const result = await readOcr(rotatedPath, { regionId: geometry?.regionId, ocrSource: geometry?.ocrSource }, languages, mode, remaining);
+    const result = await readOcr(rotatedPath, { regionId: geometry?.regionId, ocrSource: geometry?.ocrSource, dpi: geometry?.dpi }, languages, mode, remaining);
     if (!result.ok) return null;
 
     // Map boxes back to the original image only after ordering words in upright space.

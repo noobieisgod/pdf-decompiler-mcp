@@ -6,7 +6,7 @@ import { fingerprint, sha256 } from '../core/crypto.mjs';
 import { PdfDecompilerError } from '../core/errors.mjs';
 import { missingTesseractLanguages } from '../extract/ocr.mjs';
 import { buildCanonicalModel, extractionFingerprint, indexModel, mergeCanonicalModels, modelView } from '../model/canonical.mjs';
-import { BM25_INDEX_VERSION, BM25_SEARCH_REVISION, buildBm25, searchBm25, searchBm25AcrossDocuments } from '../search/bm25.mjs';
+import { BM25_INDEX_VERSION, BM25_SEARCH_REVISION, buildBm25, citeMatchingTableCell, searchBm25, searchBm25AcrossDocuments, tokenize } from '../search/bm25.mjs';
 import { MARKDOWN_FORMAT_VERSION, MARKDOWN_SERIALIZER_REVISION, serializeElementMarkdown, serializePagedMarkdown } from '../markdown/serializer.mjs';
 import { getFullMarkdownExport, markdownResourceUri } from '../markdown/export.mjs';
 import { buildSemanticIndex, createEmbedder, reciprocalRankFusion, searchSemantic } from '../search/semantic.mjs';
@@ -472,6 +472,7 @@ export class DocumentManager {
     async search(args) {
         return this.withOperation(args.documentId, args.extractionFingerprint, async state => {
         const model = state.model;
+        const { elements } = state.indexes;
         const strategy = args.strategy || 'full_text';
         const granularity = args.granularity || 'element';
         if (granularity === 'page' && strategy !== 'full_text' && strategy !== 'phrase') {
@@ -508,6 +509,10 @@ export class DocumentManager {
             argumentsValue: cursorArguments,
         }) : 0;
         const requestedBudget = resolveBudget(args.budget);
+        if (strategy === 'phrase' || strategy === 'full_text') {
+            const terms = tokenize(args.query);
+            results = results.map(result => citeMatchingTableCell(result, elements, terms, strategy === 'phrase'));
+        }
         const bounded = applyResultBudget(results, searchSelectionBudget(args, requestedBudget), start);
         const nextCursor = bounded.nextOffset === null ? null : this.cursors.encode({ documentId: state.model.documentId, extractionFingerprint: state.model.extractionFingerprint, operation: 'pdf_search', argumentsValue: cursorArguments, position: bounded.nextOffset });
         const { unprocessedPages, uncertainPages } = textCoverage(model, args.pages);
@@ -564,8 +569,11 @@ export class DocumentManager {
             if (states.some((state, index) => state.model !== models[index])) {
                 throw new PdfDecompilerError('changed_search_scope', 'A document changed during search. Start the search again.');
             }
-            const results = searchBm25AcrossDocuments(indexes, args.query, { phrase: strategy === 'phrase', elementTypes: args.elementTypes });
             const identity = ({ citation }) => stateKey(citation.documentId, citation.extractionFingerprint);
+            const elementsByDocument = new Map(states.map((state, index) => [keys[index], state.indexes.elements]));
+            const terms = tokenize(args.query);
+            const results = searchBm25AcrossDocuments(indexes, args.query, { phrase: strategy === 'phrase', elementTypes: args.elementTypes })
+                .map(result => citeMatchingTableCell(result, elementsByDocument.get(identity(result)), terms, strategy === 'phrase'));
             const bounded = applyResultBudget(results, searchSelectionBudget(args, budget), start, {
                 pageKey: item => `${identity(item)}:${item.page}`,
                 omissionId: item => `${identity(item)}:${item.id}`,

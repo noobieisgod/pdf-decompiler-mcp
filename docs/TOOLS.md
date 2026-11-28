@@ -34,6 +34,8 @@ Pass `documents` with two to eight open document references and a `query` of up 
 
 Each hit includes an exact citation. The response reports text coverage for each document, and the pages budget counts the same page number in different PDFs separately. Repeat the query and options with `nextCursor` to continue. Extend or close any selected document and start a new search.
 
+Keyword and phrase search use the matching cell's box when exactly one cell in a hit contains the query. The citation keeps the table's element ID so it can be opened with `pdf_get_element`. Matches across cells or in several cells cite the whole table.
+
 ## `pdf_get_pages`
 
 Accepts page numbers or ranges, `text`, `balanced`, or `fidelity` mode, element inclusion and exclusion overrides, budgets, and a cursor. `outputFormat` is `structured` by default or `markdown`. `tableDetail` is `compact` by default or `full`.

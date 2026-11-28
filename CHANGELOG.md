@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Extract cells from ruled scanned tables and highlight a unique matching cell in keyword and phrase search.
 - Recover dense scans with a higher-resolution OCR retry.
 - Straighten slightly skewed scans for OCR while preserving original page citations.
 - Retry OCR at a higher resolution on small scanned pages.

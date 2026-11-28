@@ -95,6 +95,7 @@ test('full-page OCR reads scanned columns separately and cites their text', { sk
         await fs.writeFile(source, buildRasterScan(raster));
         const opened = await manager.open({ source });
         const { elements } = await manager.getPages({ ...opened, mode: 'text' });
+        assert.equal(elements.some(element => element.type === 'table'), false);
         const blocks = elements.filter(element => element.textSource === 'ocr');
         const text = blocks.map(block => block.text).join('\n');
         assert.match(text, /LAYOUT HEADING[\s\S]+Left column alpha[\s\S]+Left column theta[\s\S]+Right column one[\s\S]+Right column eight[\s\S]+Spanning footer/);
@@ -141,23 +142,27 @@ test('OCR straightens skewed scans and cites the text on the original page', { s
     }
 });
 
-test('OCR keeps confident numbers searchable on a scanned financial page', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
+test('OCR recovers ruled table cells and cites a matching cell on a scanned financial page', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
     const { root, config } = await temporaryConfig(t, { ocrPolicy: 'required' });
     const document = openMupdfDocument(await fs.readFile(new URL('./fixtures/generated/tables-bordered.pdf', import.meta.url)));
     t.after(() => document.destroy());
-    const raster = renderMupdfPageToCanvas(document, 1, { width: 850, height: 1100 });
+    const raster = renderMupdfPageToCanvas(document, 1, { width: Math.round(1600 * 612 / 792), height: 1600 });
     const source = path.join(root, 'scanned-financial-page.pdf');
-    await fs.writeFile(source, buildRasterScan(raster));
+    await fs.writeFile(source, buildRasterScan(raster, { width: 612, height: 792 }));
     const manager = await new DocumentManager(config).init();
     t.after(() => manager.close());
     const opened = await manager.open({ source });
     const { elements } = await manager.getPages({ ...opened, mode: 'text' });
-    const text = elements.filter(element => element.textSource === 'ocr').map(element => element.text).join(' ');
-    assert.match(text, /Quarter Revenue Cost/);
-    assert.match(text, /100 80/);
-    assert.match(text, /120 90/);
+    const [table] = elements.filter(element => element.type === 'table');
+    assert.deepEqual(table.rows.map(row => row.slice(1)), [['Revenue', 'Cost'], ['100', '80'], ['120', '90']]);
+    assert.equal(table.rows[0][0], 'Quarter');
+    assert.ok(table.cells.every(cell => cell.bbox?.width > 0));
+    assert.equal(elements.some(element => element.textSource === 'ocr' && /\b120\b/.test(element.text)), false);
     const [hit] = (await manager.search({ ...opened, query: '120', strategy: 'phrase' })).results;
-    assert.ok(hit.citation.bbox?.width > 0);
+    assert.equal(hit.citation.elementId, table.id);
+    assert.deepEqual(hit.citation.bbox, table.cells.find(cell => cell.text === '120').bbox);
+    const [combined] = (await manager.search({ ...opened, query: '120 90', strategy: 'phrase' })).results;
+    assert.deepEqual(combined.citation.bbox, table.bbox);
 });
 
 test('OCR retries small scanned pages at a higher resolution and keeps page coordinates', { skip: process.env.PDF_DECOMPILER_TEST_OCR !== '1' }, async t => {
@@ -173,7 +178,7 @@ test('OCR retries small scanned pages at a higher resolution and keeps page coor
     t.after(() => manager.close());
     const opened = await manager.open({ source });
     const [hit] = (await manager.search({ ...opened, query: '120', strategy: 'phrase' })).results;
-    assert.match(hit.snippet, /120 90/);
+    assert.match(hit.snippet, /120(?: \|)? 90/);
     const box = hit.citation.bbox;
     assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height);
 });

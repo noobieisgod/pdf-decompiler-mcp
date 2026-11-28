@@ -3,10 +3,32 @@ import { PdfDecompilerError } from '../core/errors.mjs';
 const TOKEN_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]|[[\p{L}\p{N}]--[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]]+/gv;
 const MAX_PHRASE_TOKENS = 64;
 export const BM25_INDEX_VERSION = 4;
-export const BM25_SEARCH_REVISION = 2;
+export const BM25_SEARCH_REVISION = 3;
 
 export function tokenize(value) {
     return String(value || '').normalize('NFKC').toLocaleLowerCase('und').match(TOKEN_PATTERN) || [];
+}
+
+export function citeMatchingTableCell(result, elements, queryTokens, phrase) {
+    const narrow = citation => {
+        const table = elements.get(citation.elementId);
+        if (table?.type !== 'table' || !queryTokens.length) return citation;
+        let matched = null;
+        for (const cell of table.cells) {
+            if (!cell.text) continue;
+            const tokens = tokenize(cell.text);
+            const matches = phrase
+                ? tokens.some((token, start) => token === queryTokens[0] && queryTokens.every((term, offset) => tokens[start + offset] === term))
+                : queryTokens.every(term => tokens.includes(term));
+            if (!matches) continue;
+            if (matched) return citation;
+            matched = cell;
+        }
+        return matched?.bbox ? { ...citation, bbox: matched.bbox } : citation;
+    };
+    const citation = narrow(result.citation);
+    const citations = result.citations?.map(value => value === result.citation ? citation : narrow(value));
+    return { ...result, citation, citations };
 }
 
 function searchable(element) {
